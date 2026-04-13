@@ -3,17 +3,18 @@ package create
 import (
 	"fmt"
 	"strings"
-	"unicode"
 )
 
 const DefaultPHPVersion = "8.4"
+const DefaultDatabaseName = "wordpress"
 
 type ProjectConfig struct {
-	Name       string
-	PHPVersion string
-	Domain     string
-	Database   string
-	DryRun     bool
+	Name        string
+	PHPVersion  string
+	Domain      string
+	Database    string
+	StarterRepo string
+	DryRun      bool
 }
 
 func (c *ProjectConfig) Normalize() error {
@@ -30,32 +31,7 @@ func (c *ProjectConfig) Normalize() error {
 		c.Domain = fmt.Sprintf("%s.lndo.site", c.Name)
 	}
 
-	if strings.TrimSpace(c.Database) == "" {
-		c.Database = sanitizeDatabaseName(c.Name)
-	}
+	c.Database = DefaultDatabaseName
 
 	return nil
-}
-
-func sanitizeDatabaseName(name string) string {
-	var builder strings.Builder
-	lastUnderscore := false
-
-	for _, r := range strings.ToLower(name) {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			builder.WriteRune(r)
-			lastUnderscore = false
-		case !lastUnderscore:
-			builder.WriteByte('_')
-			lastUnderscore = true
-		}
-	}
-
-	result := strings.Trim(builder.String(), "_")
-	if result == "" {
-		return "wordpress"
-	}
-
-	return result
 }

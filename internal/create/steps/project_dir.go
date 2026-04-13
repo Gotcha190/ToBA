@@ -39,6 +39,9 @@ func (s *ProjectDirStep) Run(ctx *create.Context) error {
 		if err := project.CreateDir(dir); err != nil {
 			return err
 		}
+		if dir == ctx.Paths.Root {
+			ctx.ProjectCreated = true
+		}
 		ctx.Logger.Info("Created: " + dir)
 	}
 

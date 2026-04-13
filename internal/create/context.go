@@ -6,4 +6,6 @@ type Context struct {
 	Logger Logger
 	Runner CommandRunner
 	Paths  ProjectPaths
+
+	ProjectCreated bool
 }

@@ -20,6 +20,11 @@ func Execute() {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			os.Exit(1)
 		}
+	case "config":
+		if err := runConfig(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			os.Exit(1)
+		}
 	case "doctor":
 		if err := cli.RunDoctor(); err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
@@ -40,10 +45,10 @@ func runCreate(args []string) error {
 	var opts cli.CreateOptions
 	fs.StringVar(&opts.PHPVersion, "php", "", "PHP version for the Lando appserver")
 	fs.StringVar(&opts.Domain, "domain", "", "Local domain for the project")
-	fs.StringVar(&opts.Database, "db", "", "Database name for the project")
+	fs.StringVar(&opts.StarterRepo, "starter-repo", "", "Git repository for the starter theme")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "Print planned actions without writing files")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba create <project-name> [--php=8.4] [--domain=project.lndo.site] [--db=project_db] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--domain=project.lndo.site] [--starter-repo=git@github.com:org/repo.git] [--dry-run]")
 	}
 
 	projectName := ""
@@ -62,10 +67,6 @@ func runCreate(args []string) error {
 		remaining = remaining[1:]
 	}
 
-	if projectName == "" {
-		fs.Usage()
-		return fmt.Errorf("missing project name")
-	}
 	if len(remaining) > 0 {
 		return fmt.Errorf("unexpected arguments: %v", remaining)
 	}
@@ -74,10 +75,19 @@ func runCreate(args []string) error {
 	return cli.RunCreate(opts)
 }
 
+func runConfig(args []string) error {
+	if len(args) != 1 || args[0] != "init" {
+		return fmt.Errorf("usage: toba config init")
+	}
+
+	return cli.RunConfigInit()
+}
+
 func printUsage() {
 	fmt.Println("Usage: toba <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
+	fmt.Println("  config   Initialize global ToBA configuration")
 	fmt.Println("  create   Create a new project skeleton")
 	fmt.Println("  doctor   Check system dependencies")
 	fmt.Println("  version  Print the current version")

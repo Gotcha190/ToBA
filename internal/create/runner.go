@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -17,8 +18,7 @@ type CommandRunner interface {
 type ExecRunner struct{}
 
 func (r ExecRunner) Run(dir string, cmd string, args ...string) error {
-	command := exec.Command(cmd, args...)
-	command.Dir = dir
+	command := shellCommand(dir, cmd, args...)
 	command.Env = withWorkingDirEnv(dir)
 
 	var stdout bytes.Buffer
@@ -35,8 +35,7 @@ func (r ExecRunner) Run(dir string, cmd string, args ...string) error {
 }
 
 func (r ExecRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	command := exec.Command(cmd, args...)
-	command.Dir = dir
+	command := shellCommand(dir, cmd, args...)
 	command.Env = withWorkingDirEnv(dir)
 
 	var stdout bytes.Buffer
@@ -81,6 +80,29 @@ func withWorkingDirEnv(dir string) []string {
 	}
 
 	return append(env, pwdPrefix+dir)
+}
+
+func shellCommand(dir string, cmd string, args ...string) *exec.Cmd {
+	script := buildShellScript(dir, cmd, args...)
+	return exec.Command("bash", "-lc", script)
+}
+
+func buildShellScript(dir string, cmd string, args ...string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, shellQuote(cmd))
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
+
+	if dir == "" {
+		return strings.Join(parts, " ")
+	}
+
+	return "cd " + shellQuote(filepath.Clean(dir)) + " && " + strings.Join(parts, " ")
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
 type NoopRunner struct{}

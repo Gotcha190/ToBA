@@ -12,7 +12,6 @@ func TestRenderConfig(t *testing.T) {
 		Name:       "demo",
 		PHPVersion: "8.4",
 		Domain:     "demo.lndo.site",
-		Database:   "demo_db",
 	})
 	if err != nil {
 		t.Fatalf("RenderConfig returned error: %v", err)
