@@ -1,0 +1,50 @@
+config:
+  database: mysql:8.0
+  php: "{{ .PHPVersion }}"
+  via: apache
+  webroot: ./app
+  xdebug: false
+name: {{ .Name }}
+recipe: wordpress
+services:
+  appserver:
+    config:
+      php: config/php.ini
+    overrides:
+      environment:
+        PHP_IDE_CONFIG: projectName={{ .Name }}
+        XDEBUG_MODE: debug,develop
+        XDEBUG_SESSION_START: lando
+  mailhog:
+    hogfrom:
+      - appserver
+    type: mailhog
+  pma:
+    hosts:
+      - database
+    type: phpmyadmin
+  theme:
+    overrides:
+      ports:
+        - 3000:3000
+        - 3001:3001
+    type: node:18
+tooling:
+  npm:
+    service: theme
+  xdebug-off:
+    cmd:
+      - rm /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini && kill -USR2 $(pgrep -o php-fpm) > /dev/null || /etc/init.d/apache2 reload
+      - tput setaf 1 && echo "Xdebug Off" && tput sgr 0 && echo
+    description: Disable Xdebug.
+    service: appserver
+    user: root
+  xdebug-on:
+    cmd:
+      - docker-php-ext-enable xdebug && kill -USR2 $(pgrep -o php-fpm) > /dev/null || /etc/init.d/apache2 reload
+      - tput setaf 2 && echo "Xdebug On" && tput sgr 0 && echo
+    description: Enable Xdebug.
+    service: appserver
+    user: root
+  yarn:
+    service: theme
