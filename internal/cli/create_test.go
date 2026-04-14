@@ -108,6 +108,23 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 	if string(wpCLIConfig) != "path: app\nserver:\n  docroot: app\n" {
 		t.Fatalf("unexpected wp-cli.yml contents:\n%s", string(wpCLIConfig))
 	}
+	for _, path := range []string{
+		filepath.Join(paths.WPContent, "plugins", "advanced-custom-fields-pro"),
+		filepath.Join(paths.WPContent, "plugins", "wp-optimize"),
+		filepath.Join(paths.WPContent, "uploads", "2025", "07"),
+		filepath.Join(paths.WPContent, "cache", "acorn"),
+		paths.DatabaseSQL,
+	} {
+		if _, statErr := os.Stat(path); statErr != nil {
+			t.Fatalf("expected %s to exist: %v", path, statErr)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(paths.WPContent, "uploads.zip")); statErr != nil {
+		t.Fatalf("expected uploads.zip from others archive to exist: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(paths.WPContent, "uploads", "2026")); os.IsNotExist(statErr) {
+		t.Fatalf("expected regular uploads archive to be extracted")
+	}
 
 	expectedCommands := []recordedCommand{
 		{
@@ -123,7 +140,7 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 		{
 			dir:  paths.Root,
 			cmd:  "lando",
-			args: []string{"wp", "config", "create", "--dbname=wordpress", "--dbuser=wordpress", "--dbpass=wordpress", "--dbhost=database"},
+			args: []string{"wp", "config", "create", "--dbname=wordpress", "--dbuser=wordpress", "--dbpass=wordpress", "--dbhost=database", "--dbcharset=utf8mb4"},
 		},
 		{
 			dir:  paths.Root,
@@ -149,6 +166,48 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 			dir:  filepath.Join(paths.Themes, "demo"),
 			cmd:  "npm",
 			args: []string{"run", "build"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"db-import", "app/database.sql"},
+		},
+		{
+			dir: paths.Root,
+			cmd: "lando",
+			args: []string{
+				"wp",
+				"search-replace",
+				"https://starter.tamago-dev.pl",
+				"https://demo.lndo.site",
+				"--all-tables-with-prefix",
+				"--skip-columns=guid",
+			},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "user", "update", "1", "--user_pass=tamago"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "theme", "activate", "demo"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "key:generate"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "key:generate"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "rewrite", "flush", "--hard"},
 		},
 	}
 

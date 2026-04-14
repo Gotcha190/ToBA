@@ -53,3 +53,13 @@ func Build(runner create.CommandRunner, themeDir string) error {
 
 	return nil
 }
+
+func GenerateAcornKey(runner create.CommandRunner, projectDir string) error {
+	for range 2 {
+		if err := runner.Run(projectDir, "lando", "wp", "acorn", "key:generate"); err != nil {
+			return fmt.Errorf("acorn key generation failed: %w", err)
+		}
+	}
+
+	return nil
+}

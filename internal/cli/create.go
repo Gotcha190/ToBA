@@ -76,6 +76,14 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 			steps.NewInstallWordPressStep(),
 			steps.NewInstallThemeStep(),
 			steps.NewBuildThemeStep(),
+			steps.NewImportPluginsStep(),
+			steps.NewImportUploadsStep(),
+			steps.NewImportOthersStep(),
+			steps.NewImportDatabaseStep(),
+			steps.NewResetAdminPasswordStep(),
+			steps.NewActivateThemeStep(),
+			steps.NewGenerateAcornKeyStep(),
+			steps.NewFlushRewriteRulesStep(),
 		},
 	}
 

@@ -113,6 +113,32 @@ func TestBuildReturnsCommandError(t *testing.T) {
 	}
 }
 
+func TestGenerateAcornKeyRunsTwice(t *testing.T) {
+	runner := &fakeRunner{}
+
+	err := GenerateAcornKey(runner, "/tmp/demo")
+	if err != nil {
+		t.Fatalf("GenerateAcornKey returned error: %v", err)
+	}
+
+	expected := []recordedCommand{
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "key:generate"},
+		},
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "key:generate"},
+		},
+	}
+
+	if !reflect.DeepEqual(runner.commands, expected) {
+		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	}
+}
+
 func TestInstallFailsWhenTargetExists(t *testing.T) {
 	themesDir := t.TempDir()
 	targetDir := filepath.Join(themesDir, "demo")
