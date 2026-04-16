@@ -72,7 +72,7 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 	return "", nil
 }
 
-func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
+func TestRunCreateCreatesProjectSkeletonFromSSHStarter(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
 	runner := &fakeRunner{}
@@ -89,176 +89,127 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 	}
 
 	paths := create.NewProjectPaths(baseDir, "demo")
-	for _, dir := range []string{paths.Root, paths.AppDir, paths.ConfigDir} {
-		info, statErr := os.Stat(dir)
-		if statErr != nil {
-			t.Fatalf("expected %s to exist: %v", dir, statErr)
-		}
-		if !info.IsDir() {
-			t.Fatalf("expected %s to be a directory", dir)
-		}
-	}
+	assertProjectSkeleton(t, paths)
+	assertStaticConfigs(t, paths)
 
-	landoConfigPath := filepath.Join(paths.Root, ".lando.yml")
-	landoConfig, readErr := os.ReadFile(landoConfigPath)
-	if readErr != nil {
-		t.Fatalf("expected %s to exist: %v", landoConfigPath, readErr)
-	}
-
-	output := string(landoConfig)
-	if !strings.Contains(output, "name: demo") {
-		t.Fatalf("expected rendered .lando.yml to include project name, got:\n%s", output)
-	}
-	if !strings.Contains(output, `php: "8.4"`) {
-		t.Fatalf("expected rendered .lando.yml to include php version, got:\n%s", output)
-	}
-	if !strings.Contains(output, "type: node:18") {
-		t.Fatalf("expected rendered .lando.yml to include theme service, got:\n%s", output)
-	}
-	if info, statErr := os.Stat(paths.Themes); statErr != nil {
-		t.Fatalf("expected %s to exist after theme install, got err=%v", paths.Themes, statErr)
-	} else if !info.IsDir() {
-		t.Fatalf("expected %s to be a directory", paths.Themes)
-	}
-
-	phpINIPath := filepath.Join(paths.ConfigDir, "php.ini")
-	phpINI, readPHPINIError := os.ReadFile(phpINIPath)
-	if readPHPINIError != nil {
-		t.Fatalf("expected %s to exist: %v", phpINIPath, readPHPINIError)
-	}
-	if !strings.Contains(string(phpINI), "xdebug.mode = profile,debug,develop") {
-		t.Fatalf("expected generated php.ini to contain xdebug mode, got:\n%s", string(phpINI))
-	}
-	if !strings.Contains(string(phpINI), "xdebug.client_host = ${LANDO_HOST_IP}") {
-		t.Fatalf("expected generated php.ini to contain default settings, got:\n%s", string(phpINI))
-	}
-
-	wpCLIPath := filepath.Join(paths.Root, "wp-cli.yml")
-	wpCLIConfig, readWPCLIError := os.ReadFile(wpCLIPath)
-	if readWPCLIError != nil {
-		t.Fatalf("expected %s to exist: %v", wpCLIPath, readWPCLIError)
-	}
-	if string(wpCLIConfig) != "path: app\nserver:\n  docroot: app\napache_modules:\n  - mod_rewrite\n" {
-		t.Fatalf("unexpected wp-cli.yml contents:\n%s", string(wpCLIConfig))
-	}
 	for _, path := range []string{
-		filepath.Join(paths.WPContent, "plugins", "webp-converter-for-media"),
-		filepath.Join(paths.WPContent, "plugins", "redis-cache"),
-		filepath.Join(paths.WPContent, "uploads", "2025", "07"),
+		filepath.Join(paths.WPContent, "plugins", "advanced-custom-fields-pro", "acf.php"),
+		filepath.Join(paths.WPContent, "plugins", "wp-optimize", "wp-optimize.php"),
+		filepath.Join(paths.WPContent, "uploads", "2025", "07", "example.jpg"),
+		paths.DatabaseSQL,
+		filepath.Join(paths.Themes, "demo"),
+	} {
+		if _, statErr := os.Stat(path); statErr != nil {
+			t.Fatalf("expected %s to exist: %v", path, statErr)
+		}
+	}
+
+	assertHasCommand(t, runner.commands, "ssh", []string{"-p", "22", "user@192.168.0.1", "dynamic:home"})
+	assertHasCommand(t, runner.commands, "scp", []string{"-P", "22", "dynamic:remote-sql", "dynamic:local-sql"})
+	assertHasCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
+	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install"})
+	assertHasCommand(t, runner.commands, "npm", []string{"i"})
+	assertHasCommand(t, runner.commands, "npm", []string{"run", "build"})
+	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "demo"})
+	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 2)
+	assertNoCommand(t, runner.commands, "lando", []string{"wp", "option", "get", "stylesheet"})
+}
+
+func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	projectRoot := filepath.Join(baseDir, "demo")
+	writeCreateTestFile(t, filepath.Join(projectRoot, "backup-demo-db.sql"), "# Home URL: https://local-starter.test\nSELECT 1;\n")
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-plugins.zip"), map[string]string{
+		"plugins/acf/acf.php": "<?php\n",
+	}); err != nil {
+		t.Fatalf("failed to write plugins zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-uploads.zip"), map[string]string{
+		"uploads/2026/example.txt": "uploaded",
+	}); err != nil {
+		t.Fatalf("failed to write uploads zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-themes.zip"), map[string]string{
+		"themes/toet/style.css": "/* theme */",
+	}); err != nil {
+		t.Fatalf("failed to write themes zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-others.zip"), map[string]string{
+		"mu-plugins/local.php": "<?php\n",
+	}); err != nil {
+		t.Fatalf("failed to write others zip: %v", err)
+	}
+
+	runner := &fakeRunner{}
+	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, runner); err != nil {
+		t.Fatalf("expected local project backup flow to succeed, got: %v", err)
+	}
+
+	paths := create.NewProjectPaths(baseDir, "demo")
+	assertProjectSkeleton(t, paths)
+
+	for _, path := range []string{
+		filepath.Join(paths.WPContent, "plugins", "acf", "acf.php"),
+		filepath.Join(paths.WPContent, "uploads", "2026", "example.txt"),
+		filepath.Join(paths.WPContent, "themes", "toet", "style.css"),
+		filepath.Join(paths.WPContent, "mu-plugins", "local.php"),
 		paths.DatabaseSQL,
 	} {
 		if _, statErr := os.Stat(path); statErr != nil {
 			t.Fatalf("expected %s to exist: %v", path, statErr)
 		}
 	}
-	if _, statErr := os.Stat(filepath.Join(paths.WPContent, "uploads", "2026")); os.IsNotExist(statErr) {
-		t.Fatalf("expected regular uploads archive to be extracted")
-	}
 
-	expectedCommands := []recordedCommand{
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"start"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "core", "download", "--locale=pl_PL"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "config", "create", "--dbname=wordpress", "--dbuser=wordpress", "--dbpass=wordpress", "--dbhost=database", "--dbcharset=utf8mb4"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "core", "install", "--url=demo.lndo.site", "--title=Demo", "--admin_user=tamago", "--admin_email=email@email.pl", "--admin_password=tamago"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"db-import", "app/database.sql"},
-		},
-		{
-			dir: paths.Root,
-			cmd: "lando",
-			args: []string{
-				"wp",
-				"search-replace",
-				"https://glowow.lndo.site",
-				"https://demo.lndo.site",
-				"--all-tables-with-prefix",
-				"--skip-columns=guid",
-			},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "cache", "flush"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "optimize:clear"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "user", "update", "1", "--user_pass=tamago"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "option", "get", "stylesheet"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "theme", "activate", "toet"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "rewrite", "flush", "--hard"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "optimize"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "cache:clear"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "acf:cache"},
-		},
-	}
-
-	if !commandsMatch(runner.commands, expectedCommands) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expectedCommands, runner.commands)
-	}
+	assertNoCommand(t, runner.commands, "ssh", nil)
+	assertNoCommand(t, runner.commands, "scp", nil)
+	assertNoCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
+	assertNoCommand(t, runner.commands, "lando", []string{"composer", "install"})
+	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 0)
+	assertHasCommand(t, runner.commands, "lando", []string{"wp", "option", "get", "stylesheet"})
+	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "toet"})
 }
 
-func TestRunCreateFailsWhenDirectoryExists(t *testing.T) {
+func TestRunCreateFailsWhenExistingProjectFolderHasNoUpdraftBackups(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
 
-	existingRoot := filepath.Join(baseDir, "demo")
-	if err := os.Mkdir(existingRoot, 0755); err != nil {
+	if err := os.Mkdir(filepath.Join(baseDir, "demo"), 0755); err != nil {
 		t.Fatalf("failed to prepare existing directory: %v", err)
 	}
 
 	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
 	if err == nil {
-		t.Fatal("expected RunCreate to fail when project directory already exists")
+		t.Fatal("expected RunCreate to fail for empty existing project directory")
 	}
-	if !strings.Contains(err.Error(), "directory already exists") {
+	if !strings.Contains(err.Error(), "contains no recognizable Updraft backup files") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunCreateFailsWhenExistingProjectFolderContainsProjectMarkers(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	projectRoot := filepath.Join(baseDir, "demo")
+	writeCreateTestFile(t, filepath.Join(projectRoot, "backup-demo-db.sql"), "# Home URL: https://local-starter.test\nSELECT 1;\n")
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-plugins.zip"), map[string]string{"plugins/acf/acf.php": "<?php\n"}); err != nil {
+		t.Fatalf("failed to write plugins zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-uploads.zip"), map[string]string{"uploads/2026/example.txt": "uploaded"}); err != nil {
+		t.Fatalf("failed to write uploads zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-themes.zip"), map[string]string{"themes/toet/style.css": "/* theme */"}); err != nil {
+		t.Fatalf("failed to write themes zip: %v", err)
+	}
+	writeCreateTestFile(t, filepath.Join(projectRoot, ".lando.yml"), "name: demo\n")
+
+	err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
+	if err == nil {
+		t.Fatal("expected existing generated project markers to fail")
+	}
+	if !strings.Contains(err.Error(), ".lando.yml") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -293,21 +244,6 @@ func TestRunCreateReturnsRunnerError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "lando start failed") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunCreateUsesEmbeddedStarterWithoutStarterRepo(t *testing.T) {
-	baseDir := t.TempDir()
-	withWorkingDir(t, baseDir)
-
-	runner := &fakeRunner{}
-	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, runner); err != nil {
-		t.Fatalf("expected embedded starter override to work without starter repo, got: %v", err)
-	}
-	for _, command := range runner.commands {
-		if command.cmd == "git" {
-			t.Fatalf("expected no git clone when embedded theme backup exists, got %#v", runner.commands)
-		}
 	}
 }
 
@@ -394,6 +330,134 @@ func TestRunCreateFailsWithoutGlobalConfig(t *testing.T) {
 	}
 }
 
+func assertProjectSkeleton(t *testing.T, paths create.ProjectPaths) {
+	t.Helper()
+
+	for _, dir := range []string{paths.Root, paths.AppDir, paths.ConfigDir} {
+		info, statErr := os.Stat(dir)
+		if statErr != nil {
+			t.Fatalf("expected %s to exist: %v", dir, statErr)
+		}
+		if !info.IsDir() {
+			t.Fatalf("expected %s to be a directory", dir)
+		}
+	}
+}
+
+func assertStaticConfigs(t *testing.T, paths create.ProjectPaths) {
+	t.Helper()
+
+	landoConfigPath := filepath.Join(paths.Root, ".lando.yml")
+	landoConfig, readErr := os.ReadFile(landoConfigPath)
+	if readErr != nil {
+		t.Fatalf("expected %s to exist: %v", landoConfigPath, readErr)
+	}
+	output := string(landoConfig)
+	if !strings.Contains(output, "name: demo") {
+		t.Fatalf("expected rendered .lando.yml to include project name, got:\n%s", output)
+	}
+	if !strings.Contains(output, `php: "8.4"`) {
+		t.Fatalf("expected rendered .lando.yml to include php version, got:\n%s", output)
+	}
+
+	phpINIPath := filepath.Join(paths.ConfigDir, "php.ini")
+	phpINI, readPHPINIError := os.ReadFile(phpINIPath)
+	if readPHPINIError != nil {
+		t.Fatalf("expected %s to exist: %v", phpINIPath, readPHPINIError)
+	}
+	if !strings.Contains(string(phpINI), "xdebug.mode = profile,debug,develop") {
+		t.Fatalf("expected generated php.ini to contain xdebug mode, got:\n%s", string(phpINI))
+	}
+
+	wpCLIPath := filepath.Join(paths.Root, "wp-cli.yml")
+	wpCLIConfig, readWPCLIError := os.ReadFile(wpCLIPath)
+	if readWPCLIError != nil {
+		t.Fatalf("expected %s to exist: %v", wpCLIPath, readWPCLIError)
+	}
+	if string(wpCLIConfig) != "path: app\nserver:\n  docroot: app\napache_modules:\n  - mod_rewrite\n" {
+		t.Fatalf("unexpected wp-cli.yml contents:\n%s", string(wpCLIConfig))
+	}
+}
+
+func assertHasCommand(t *testing.T, commands []recordedCommand, cmd string, args []string) {
+	t.Helper()
+
+	for _, command := range commands {
+		if command.cmd != cmd {
+			continue
+		}
+		if argsMatch(command.args, args) {
+			return
+		}
+	}
+
+	t.Fatalf("expected command %s %v, got %#v", cmd, args, commands)
+}
+
+func assertNoCommand(t *testing.T, commands []recordedCommand, cmd string, args []string) {
+	t.Helper()
+
+	for _, command := range commands {
+		if command.cmd != cmd {
+			continue
+		}
+		if args == nil || argsMatch(command.args, args) {
+			t.Fatalf("did not expect command %s %v, got %#v", cmd, args, commands)
+		}
+	}
+}
+
+func assertCommandCount(t *testing.T, commands []recordedCommand, cmd string, args []string, expected int) {
+	t.Helper()
+
+	count := 0
+	for _, command := range commands {
+		if command.cmd != cmd {
+			continue
+		}
+		if argsMatch(command.args, args) {
+			count++
+		}
+	}
+
+	if count != expected {
+		t.Fatalf("expected %d occurrences of %s %v, got %d in %#v", expected, cmd, args, count, commands)
+	}
+}
+
+func argsMatch(actual []string, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+
+	for i := range actual {
+		if strings.HasPrefix(expected[i], "dynamic:") {
+			if !matchesDynamicArg(actual[i], strings.TrimPrefix(expected[i], "dynamic:")) {
+				return false
+			}
+			continue
+		}
+		if actual[i] != expected[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func matchesDynamicArg(actual string, pattern string) bool {
+	switch pattern {
+	case "home":
+		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl' && wp84 option get home")
+	case "remote-sql":
+		return strings.HasPrefix(actual, "user@192.168.0.1:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, ".sql")
+	case "local-sql":
+		return strings.HasSuffix(actual, ".sql")
+	default:
+		return false
+	}
+}
+
 func withWorkingDir(t *testing.T, dir string) {
 	t.Helper()
 
@@ -447,6 +511,17 @@ func materializeDownloadedFixture(remoteSource string, localTarget string) error
 	}
 }
 
+func writeCreateTestFile(t *testing.T, path string, content string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create parent dir for %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write %s: %v", path, err)
+	}
+}
+
 func writeZipFixture(path string, files map[string]string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
@@ -470,83 +545,4 @@ func writeZipFixture(path string, files map[string]string) error {
 	}
 
 	return writer.Close()
-}
-
-func commandsMatch(actual []recordedCommand, expected []recordedCommand) bool {
-	if len(actual) != len(expected) {
-		return false
-	}
-
-	for i := range actual {
-		if actual[i].dir != expected[i].dir || actual[i].cmd != expected[i].cmd || len(actual[i].args) != len(expected[i].args) {
-			return false
-		}
-		for j := range actual[i].args {
-			expectedArg := expected[i].args[j]
-			if strings.HasPrefix(expectedArg, "dynamic:") {
-				if !matchesDynamicArg(actual[i].args[j], strings.TrimPrefix(expectedArg, "dynamic:")) {
-					return false
-				}
-				continue
-			}
-			if actual[i].args[j] != expectedArg {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-func matchesDynamicArg(actual string, pattern string) bool {
-	switch pattern {
-	case "db-export":
-		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl' && wp84 db export ") && strings.HasSuffix(actual, ".sql'")
-	case "zip-plugins":
-		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl/wp-content' && zip -rq ../") && strings.Contains(actual, "-plugins.zip") && strings.HasSuffix(actual, " plugins")
-	case "zip-uploads":
-		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl/wp-content' && zip -rq ../") && strings.Contains(actual, "-uploads.zip") && strings.HasSuffix(actual, " uploads")
-	case "remote-sql":
-		return strings.HasPrefix(actual, "user@192.168.0.1:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, ".sql")
-	case "remote-plugins":
-		return strings.HasPrefix(actual, "user@192.168.0.1:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, "-plugins.zip")
-	case "remote-uploads":
-		return strings.HasPrefix(actual, "user@192.168.0.1:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, "-uploads.zip")
-	case "local-sql":
-		return strings.HasSuffix(actual, ".sql")
-	case "local-plugins":
-		return strings.HasSuffix(actual, "-plugins.zip")
-	case "local-uploads":
-		return strings.HasSuffix(actual, "-uploads.zip")
-	case "cleanup":
-		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl' && rm -f 'toba-create-") && strings.Contains(actual, ".sql'") && strings.Contains(actual, "-plugins.zip'") && strings.Contains(actual, "-uploads.zip'")
-	default:
-		return false
-	}
-}
-
-func matchDynamicRemote(suffix string) string {
-	switch suffix {
-	case ".sql":
-		return "dynamic:remote-sql"
-	case "-plugins.zip":
-		return "dynamic:remote-plugins"
-	case "-uploads.zip":
-		return "dynamic:remote-uploads"
-	default:
-		return ""
-	}
-}
-
-func matchDynamicLocal(suffix string) string {
-	switch suffix {
-	case ".sql":
-		return "dynamic:local-sql"
-	case "-plugins.zip":
-		return "dynamic:local-plugins"
-	case "-uploads.zip":
-		return "dynamic:local-uploads"
-	default:
-		return ""
-	}
 }

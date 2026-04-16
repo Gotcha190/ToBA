@@ -1,13 +1,5 @@
 .git
 .gitignore
-/templates/wordpress/*
 /MD-Files
 .env
 .env.local
-/internal/templates/files/wordpress/database/*
-/internal/templates/files/wordpress/uploads/*
-/internal/templates/files/wordpress/others/*
-/internal/templates/files/wordpress/plugins/*
-/internal/templates/files/wordpress/themes/*
-/internal/templates/files/wordpress/DATA_VERSION
-/internal/templates/files/wordpress/manifest.json

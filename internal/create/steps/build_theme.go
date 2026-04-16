@@ -19,7 +19,7 @@ func (s *BuildThemeStep) Name() string {
 
 func (s *BuildThemeStep) Run(ctx *create.Context) error {
 	if len(ctx.StarterData.ThemePaths) > 0 {
-		ctx.Logger.Info("Skipping starter build: using embedded theme backup")
+		ctx.Logger.Info("Skipping starter build: using local theme backup")
 		return nil
 	}
 
