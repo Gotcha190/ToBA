@@ -1,10 +1,10 @@
 package cli
 
 import (
+	"archive/zip"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -22,6 +22,8 @@ type recordedCommand struct {
 type fakeRunner struct {
 	commands []recordedCommand
 	runErr   error
+	homeURL  string
+	failCmd  string
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
@@ -30,12 +32,42 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
-	return r.runErr
+	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
+		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
+			return err
+		}
+	}
+	if cmd == "scp" && len(args) >= 3 {
+		if err := materializeDownloadedFixture(args[len(args)-2], args[len(args)-1]); err != nil {
+			return err
+		}
+	}
+	if r.runErr != nil && (r.failCmd == "" || r.failCmd == cmd) {
+		return r.runErr
+	}
+	return nil
 }
 
 func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	if err := r.Run(dir, cmd, args...); err != nil {
-		return "", err
+	r.commands = append(r.commands, recordedCommand{
+		dir:  dir,
+		cmd:  cmd,
+		args: append([]string(nil), args...),
+	})
+	if r.runErr != nil && (r.failCmd == "" || r.failCmd == cmd) {
+		return "", r.runErr
+	}
+	if cmd == "ssh" && len(args) > 0 && strings.Contains(args[len(args)-1], "wp84 option get home") {
+		if r.homeURL == "" {
+			return "https://starter.tamago-dev.pl\n", nil
+		}
+		return r.homeURL + "\n", nil
+	}
+	if cmd == "lando" && len(args) == 4 && args[0] == "wp" && args[1] == "option" && args[2] == "get" {
+		switch args[3] {
+		case "stylesheet", "template":
+			return "toet\n", nil
+		}
 	}
 	return "", nil
 }
@@ -50,6 +82,7 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 		PHPVersion:  "8.4",
 		Domain:      "demo.lndo.site",
 		StarterRepo: testStarterRepo,
+		SSHTarget:   "toba@185.238.75.243 -p 22666",
 	}, runner)
 	if err != nil {
 		t.Fatalf("RunCreate returned error: %v", err)
@@ -105,22 +138,18 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 	if readWPCLIError != nil {
 		t.Fatalf("expected %s to exist: %v", wpCLIPath, readWPCLIError)
 	}
-	if string(wpCLIConfig) != "path: app\nserver:\n  docroot: app\n" {
+	if string(wpCLIConfig) != "path: app\nserver:\n  docroot: app\napache_modules:\n  - mod_rewrite\n" {
 		t.Fatalf("unexpected wp-cli.yml contents:\n%s", string(wpCLIConfig))
 	}
 	for _, path := range []string{
-		filepath.Join(paths.WPContent, "plugins", "advanced-custom-fields-pro"),
-		filepath.Join(paths.WPContent, "plugins", "wp-optimize"),
+		filepath.Join(paths.WPContent, "plugins", "webp-converter-for-media"),
+		filepath.Join(paths.WPContent, "plugins", "redis-cache"),
 		filepath.Join(paths.WPContent, "uploads", "2025", "07"),
-		filepath.Join(paths.WPContent, "cache", "acorn"),
 		paths.DatabaseSQL,
 	} {
 		if _, statErr := os.Stat(path); statErr != nil {
 			t.Fatalf("expected %s to exist: %v", path, statErr)
 		}
-	}
-	if _, statErr := os.Stat(filepath.Join(paths.WPContent, "uploads.zip")); statErr != nil {
-		t.Fatalf("expected uploads.zip from others archive to exist: %v", statErr)
 	}
 	if _, statErr := os.Stat(filepath.Join(paths.WPContent, "uploads", "2026")); os.IsNotExist(statErr) {
 		t.Fatalf("expected regular uploads archive to be extracted")
@@ -148,26 +177,6 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 			args: []string{"wp", "core", "install", "--url=demo.lndo.site", "--title=Demo", "--admin_user=tamago", "--admin_email=email@email.pl", "--admin_password=tamago"},
 		},
 		{
-			dir:  paths.Themes,
-			cmd:  "git",
-			args: []string{"clone", testStarterRepo, "demo"},
-		},
-		{
-			dir:  filepath.Join(paths.Themes, "demo"),
-			cmd:  "lando",
-			args: []string{"composer", "install"},
-		},
-		{
-			dir:  filepath.Join(paths.Themes, "demo"),
-			cmd:  "npm",
-			args: []string{"i"},
-		},
-		{
-			dir:  filepath.Join(paths.Themes, "demo"),
-			cmd:  "npm",
-			args: []string{"run", "build"},
-		},
-		{
 			dir:  paths.Root,
 			cmd:  "lando",
 			args: []string{"db-import", "app/database.sql"},
@@ -178,11 +187,21 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 			args: []string{
 				"wp",
 				"search-replace",
-				"https://starter.tamago-dev.pl",
+				"https://toet-szablon.lndo.site",
 				"https://demo.lndo.site",
 				"--all-tables-with-prefix",
 				"--skip-columns=guid",
 			},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "cache", "flush"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "optimize:clear"},
 		},
 		{
 			dir:  paths.Root,
@@ -192,26 +211,36 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 		{
 			dir:  paths.Root,
 			cmd:  "lando",
-			args: []string{"wp", "theme", "activate", "demo"},
+			args: []string{"wp", "option", "get", "stylesheet"},
 		},
 		{
 			dir:  paths.Root,
 			cmd:  "lando",
-			args: []string{"wp", "acorn", "key:generate"},
-		},
-		{
-			dir:  paths.Root,
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "key:generate"},
+			args: []string{"wp", "theme", "activate", "toet"},
 		},
 		{
 			dir:  paths.Root,
 			cmd:  "lando",
 			args: []string{"wp", "rewrite", "flush", "--hard"},
 		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "optimize"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "cache:clear"},
+		},
+		{
+			dir:  paths.Root,
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "acf:cache"},
+		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expectedCommands) {
+	if !commandsMatch(runner.commands, expectedCommands) {
 		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expectedCommands, runner.commands)
 	}
 }
@@ -225,7 +254,7 @@ func TestRunCreateFailsWhenDirectoryExists(t *testing.T) {
 		t.Fatalf("failed to prepare existing directory: %v", err)
 	}
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo}, &fakeRunner{})
+	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "toba@185.238.75.243 -p 22666"}, &fakeRunner{})
 	if err == nil {
 		t.Fatal("expected RunCreate to fail when project directory already exists")
 	}
@@ -239,7 +268,7 @@ func TestRunCreateDryRunDoesNotWriteFiles(t *testing.T) {
 	withWorkingDir(t, baseDir)
 	runner := &fakeRunner{}
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, DryRun: true}, runner)
+	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "toba@185.238.75.243 -p 22666", DryRun: true}, runner)
 	if err != nil {
 		t.Fatalf("RunCreate returned error in dry-run mode: %v", err)
 	}
@@ -258,7 +287,7 @@ func TestRunCreateReturnsRunnerError(t *testing.T) {
 	withWorkingDir(t, baseDir)
 
 	expectedErr := fmt.Errorf("lando failed")
-	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo}, &fakeRunner{runErr: expectedErr})
+	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "toba@185.238.75.243 -p 22666"}, &fakeRunner{runErr: expectedErr, failCmd: "lando"})
 	if err == nil {
 		t.Fatal("expected runCreateWithRunner to return runner error")
 	}
@@ -267,16 +296,18 @@ func TestRunCreateReturnsRunnerError(t *testing.T) {
 	}
 }
 
-func TestRunCreateFailsWhenStarterRepoMissing(t *testing.T) {
+func TestRunCreateUsesEmbeddedStarterWithoutStarterRepo(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo"}, &fakeRunner{})
-	if err == nil {
-		t.Fatal("expected missing starter repo error")
+	runner := &fakeRunner{}
+	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "toba@185.238.75.243 -p 22666"}, runner); err != nil {
+		t.Fatalf("expected embedded starter override to work without starter repo, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "TOBA_STARTER_REPO") {
-		t.Fatalf("unexpected error: %v", err)
+	for _, command := range runner.commands {
+		if command.cmd == "git" {
+			t.Fatalf("expected no git clone when embedded theme backup exists, got %#v", runner.commands)
+		}
 	}
 }
 
@@ -293,8 +324,9 @@ func TestRunCreateUsesEnvConfig(t *testing.T) {
 	env := "" +
 		"TOBA_PROJECT_NAME=demo\n" +
 		"TOBA_PHP_VERSION=8.4\n" +
-		"TOBA_DOMAIN=demo.lndo.site\n" +
-		"TOBA_STARTER_REPO=" + testStarterRepo + "\n"
+		"TOBA_DOMAIN=stale-from-env.lndo.site\n" +
+		"TOBA_STARTER_REPO=" + testStarterRepo + "\n" +
+		"TOBA_SSH_TARGET=toba@185.238.75.243 -p 22666\n"
 	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -309,6 +341,19 @@ func TestRunCreateUsesEnvConfig(t *testing.T) {
 	if len(runner.commands) == 0 {
 		t.Fatal("expected commands to be executed from env config")
 	}
+	var installURL string
+	for _, command := range runner.commands {
+		if command.cmd != "lando" || len(command.args) < 4 {
+			continue
+		}
+		if command.args[0] == "wp" && command.args[1] == "core" && command.args[2] == "install" {
+			installURL = command.args[3]
+			break
+		}
+	}
+	if installURL != "--url=demo.lndo.site" {
+		t.Fatalf("expected derived domain --url=demo.lndo.site, got %q", installURL)
+	}
 }
 
 func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
@@ -317,9 +362,14 @@ func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
 
 	input := strings.NewReader("y\n")
 	output := &strings.Builder{}
-	err := runCreateWithIO(CreateOptions{Name: "demo"}, &fakeRunner{}, input, output)
+	err := runCreateWithIO(
+		CreateOptions{Name: "demo", SSHTarget: "toba@185.238.75.243 -p 22666"},
+		&fakeRunner{runErr: fmt.Errorf("lando failed"), failCmd: "lando"},
+		input,
+		output,
+	)
 	if err == nil {
-		t.Fatal("expected missing starter repo error")
+		t.Fatal("expected create to fail")
 	}
 
 	projectRoot := filepath.Join(baseDir, "demo")
@@ -376,4 +426,127 @@ func withWorkingDir(t *testing.T, dir string) {
 			t.Fatalf("failed to unset XDG_CONFIG_HOME: %v", err)
 		}
 	})
+}
+
+func materializeDownloadedFixture(remoteSource string, localTarget string) error {
+	switch {
+	case strings.HasSuffix(remoteSource, ".sql"):
+		return os.WriteFile(localTarget, []byte("# Home URL: https://starter.tamago-dev.pl\nSELECT 1;\n"), 0644)
+	case strings.HasSuffix(remoteSource, "-plugins.zip"):
+		return writeZipFixture(localTarget, map[string]string{
+			"plugins/advanced-custom-fields-pro/acf.php": "<?php\n",
+			"plugins/wp-optimize/wp-optimize.php":        "<?php\n",
+		})
+	case strings.HasSuffix(remoteSource, "-uploads.zip"):
+		return writeZipFixture(localTarget, map[string]string{
+			"uploads/2025/07/example.jpg": "image",
+			"uploads/2026/readme.txt":     "uploaded",
+		})
+	default:
+		return nil
+	}
+}
+
+func writeZipFixture(path string, files map[string]string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	output, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	writer := zip.NewWriter(output)
+	for fileName, content := range files {
+		entry, err := writer.Create(fileName)
+		if err != nil {
+			return err
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			return err
+		}
+	}
+
+	return writer.Close()
+}
+
+func commandsMatch(actual []recordedCommand, expected []recordedCommand) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+
+	for i := range actual {
+		if actual[i].dir != expected[i].dir || actual[i].cmd != expected[i].cmd || len(actual[i].args) != len(expected[i].args) {
+			return false
+		}
+		for j := range actual[i].args {
+			expectedArg := expected[i].args[j]
+			if strings.HasPrefix(expectedArg, "dynamic:") {
+				if !matchesDynamicArg(actual[i].args[j], strings.TrimPrefix(expectedArg, "dynamic:")) {
+					return false
+				}
+				continue
+			}
+			if actual[i].args[j] != expectedArg {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func matchesDynamicArg(actual string, pattern string) bool {
+	switch pattern {
+	case "db-export":
+		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl' && wp84 db export ") && strings.HasSuffix(actual, ".sql'")
+	case "zip-plugins":
+		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl/wp-content' && zip -rq ../") && strings.Contains(actual, "-plugins.zip") && strings.HasSuffix(actual, " plugins")
+	case "zip-uploads":
+		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl/wp-content' && zip -rq ../") && strings.Contains(actual, "-uploads.zip") && strings.HasSuffix(actual, " uploads")
+	case "remote-sql":
+		return strings.HasPrefix(actual, "toba@185.238.75.243:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, ".sql")
+	case "remote-plugins":
+		return strings.HasPrefix(actual, "toba@185.238.75.243:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, "-plugins.zip")
+	case "remote-uploads":
+		return strings.HasPrefix(actual, "toba@185.238.75.243:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, "-uploads.zip")
+	case "local-sql":
+		return strings.HasSuffix(actual, ".sql")
+	case "local-plugins":
+		return strings.HasSuffix(actual, "-plugins.zip")
+	case "local-uploads":
+		return strings.HasSuffix(actual, "-uploads.zip")
+	case "cleanup":
+		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl' && rm -f 'toba-create-") && strings.Contains(actual, ".sql'") && strings.Contains(actual, "-plugins.zip'") && strings.Contains(actual, "-uploads.zip'")
+	default:
+		return false
+	}
+}
+
+func matchDynamicRemote(suffix string) string {
+	switch suffix {
+	case ".sql":
+		return "dynamic:remote-sql"
+	case "-plugins.zip":
+		return "dynamic:remote-plugins"
+	case "-uploads.zip":
+		return "dynamic:remote-uploads"
+	default:
+		return ""
+	}
+}
+
+func matchDynamicLocal(suffix string) string {
+	switch suffix {
+	case ".sql":
+		return "dynamic:local-sql"
+	case "-plugins.zip":
+		return "dynamic:local-plugins"
+	case "-uploads.zip":
+		return "dynamic:local-uploads"
+	default:
+		return ""
+	}
 }

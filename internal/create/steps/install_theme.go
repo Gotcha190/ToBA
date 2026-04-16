@@ -16,6 +16,15 @@ func (s *InstallThemeStep) Name() string {
 }
 
 func (s *InstallThemeStep) Run(ctx *create.Context) error {
+	if len(ctx.StarterData.ThemePaths) > 0 {
+		if ctx.DryRun {
+			ctx.Logger.Info("Would extract themes: " + ctx.Paths.WPContent)
+			return nil
+		}
+
+		return restoreLocalZips(ctx, ctx.StarterData.ThemePaths, ctx.Paths.WPContent, "themes")
+	}
+
 	if ctx.DryRun {
 		if ctx.Config.StarterRepo == "" {
 			return theme.MissingStarterRepoError{}

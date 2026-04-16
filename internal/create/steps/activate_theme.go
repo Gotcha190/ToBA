@@ -14,6 +14,20 @@ func (s *ActivateThemeStep) Name() string {
 }
 
 func (s *ActivateThemeStep) Run(ctx *create.Context) error {
+	if len(ctx.StarterData.ThemePaths) > 0 {
+		if ctx.DryRun {
+			ctx.Logger.Info("Would detect active theme slug from imported database and activate it")
+			return nil
+		}
+
+		themeSlug, err := wordpress.DetectImportedThemeSlug(ctx.Runner, ctx.Paths.Root)
+		if err != nil {
+			return err
+		}
+
+		return wordpress.ActivateTheme(ctx.Runner, ctx.Paths.Root, themeSlug)
+	}
+
 	if ctx.DryRun {
 		ctx.Logger.Info("Would run: lando wp theme activate " + ctx.Config.Name)
 		return nil

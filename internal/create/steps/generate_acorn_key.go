@@ -16,6 +16,11 @@ func (s *GenerateAcornKeyStep) Name() string {
 }
 
 func (s *GenerateAcornKeyStep) Run(ctx *create.Context) error {
+	if len(ctx.StarterData.ThemePaths) > 0 {
+		ctx.Logger.Info("Skipping Acorn key generation: using embedded theme backup")
+		return nil
+	}
+
 	if ctx.DryRun {
 		ctx.Logger.Info("Would run: lando wp acorn key:generate")
 		ctx.Logger.Info("Would run: lando wp acorn key:generate")

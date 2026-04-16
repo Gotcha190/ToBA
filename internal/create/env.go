@@ -36,9 +36,9 @@ func ResolveEnvConfig() (ProjectConfig, string, bool, error) {
 	return ProjectConfig{
 		Name:        values["TOBA_PROJECT_NAME"],
 		PHPVersion:  values["TOBA_PHP_VERSION"],
-		Domain:      values["TOBA_DOMAIN"],
 		Database:    values["TOBA_DATABASE"],
 		StarterRepo: values["TOBA_STARTER_REPO"],
+		SSHTarget:   values["TOBA_SSH_TARGET"],
 	}, envPath, false, nil
 }
 

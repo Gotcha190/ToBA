@@ -8,11 +8,7 @@ import (
 	"github.com/gotcha190/ToBA/internal/templatesync"
 )
 
-type UpdateOptions struct {
-	LinkPath string
-}
-
-func RunUpdate(opts UpdateOptions) error {
+func RunUpdate() error {
 	repoRoot, err := os.Getwd()
 	if err != nil {
 		return err
@@ -23,41 +19,20 @@ func RunUpdate(opts UpdateOptions) error {
 		return err
 	}
 
-	if opts.LinkPath == "" {
-		if err := validateUpdateRepoRoot(repoRoot); err != nil {
-			return err
-		}
-
-		if err := templatesync.SyncRepo(repoRoot); err != nil {
-			return err
-		}
-
-		version, err := templatesync.EmbeddedDataVersion(repoRoot)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Synced templates to embedded files. Data version: %s\n", version)
-		return nil
+	if err := validateUpdateRepoRoot(repoRoot); err != nil {
+		return err
 	}
 
-	info, version, err := templatesync.InstallOverrideBackup(opts.LinkPath)
+	if err := templatesync.SyncRepo(repoRoot); err != nil {
+		return err
+	}
+
+	version, err := templatesync.EmbeddedDataVersion(repoRoot)
 	if err != nil {
 		return err
 	}
 
-	overrideRoot, err := templatesync.OverrideTemplatesDir()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf(
-		"Installed %s override: %s -> %s\nOverride data version: %s\n",
-		info.Category,
-		info.SourcePath,
-		filepath.Join(overrideRoot, info.TargetDir, info.FileName),
-		version,
-	)
+	fmt.Printf("Synced templates to embedded files. Data version: %s\n", version)
 	return nil
 }
 

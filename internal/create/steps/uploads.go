@@ -13,5 +13,5 @@ func (s *ImportUploadsStep) Name() string {
 }
 
 func (s *ImportUploadsStep) Run(ctx *create.Context) error {
-	return restoreTemplateZips(ctx, "wordpress/uploads", ctx.Paths.WPContent)
+	return restoreLocalZips(ctx, ctx.StarterData.UploadsPaths, ctx.Paths.WPContent, "uploads")
 }
