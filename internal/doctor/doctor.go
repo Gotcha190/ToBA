@@ -18,6 +18,9 @@ func FullWorkflowChecks() []Check {
 		{Name: "Composer", Binary: "composer"},
 		{Name: "Lando", Binary: "lando"},
 		{Name: "Docker", Binary: "docker"},
+		{Name: "SSH", Binary: "ssh"},
+		{Name: "SCP", Binary: "scp"},
+		{Name: "Zip", Binary: "zip"},
 	}
 }
 

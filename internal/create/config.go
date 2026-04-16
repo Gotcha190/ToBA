@@ -14,6 +14,7 @@ type ProjectConfig struct {
 	Domain      string
 	Database    string
 	StarterRepo string
+	SSHTarget   string
 	DryRun      bool
 }
 

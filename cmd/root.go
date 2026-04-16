@@ -51,9 +51,10 @@ func runCreate(args []string) error {
 	fs.StringVar(&opts.PHPVersion, "php", "", "PHP version for the Lando appserver")
 	fs.StringVar(&opts.Domain, "domain", "", "Local domain for the project")
 	fs.StringVar(&opts.StarterRepo, "starter-repo", "", "Git repository for the starter theme")
+	fs.StringVar(&opts.SSHTarget, "ssh-target", "", "SSH target in format 'user@host -p port'")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "Print planned actions without writing files")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--domain=project.lndo.site] [--starter-repo=git@github.com:org/repo.git] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--domain=project.lndo.site] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--dry-run]")
 	}
 
 	projectName := ""
@@ -91,11 +92,8 @@ func runConfig(args []string) error {
 func runUpdate(args []string) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-
-	var opts cli.UpdateOptions
-	fs.StringVar(&opts.LinkPath, "link", "", "Path to a single Updraft backup file to replace and sync")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba update [--link=/path/to/backup.zip]")
+		fmt.Fprintln(os.Stderr, "Usage: toba update")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -105,7 +103,7 @@ func runUpdate(args []string) error {
 		return fmt.Errorf("unexpected arguments: %v", fs.Args())
 	}
 
-	return cli.RunUpdate(opts)
+	return cli.RunUpdate()
 }
 
 func printUsage() {

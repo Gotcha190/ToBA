@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -19,10 +18,15 @@ const (
 	wordPressDir       = "wordpress"
 	dataVersionFile    = "DATA_VERSION"
 	manifestFile       = "manifest.json"
-	configDirName      = "toba"
 )
 
-var backupTypePattern = regexp.MustCompile(`-(db|plugins\d*|uploads\d*|others\d*)\.(zip|gz)$`)
+var wordpressBackupCategories = map[string]struct{}{
+	"database": {},
+	"plugins":  {},
+	"uploads":  {},
+	"others":   {},
+	"themes":   {},
+}
 
 type Manifest struct {
 	Version string         `json:"version"`
@@ -35,75 +39,17 @@ type ManifestFile struct {
 	Size   int64  `json:"size"`
 }
 
-type BackupFileInfo struct {
-	SourcePath string
-	FileName   string
-	Slot       string
-	Category   string
-	TargetDir  string
-	TargetPath string
-}
-
 func SyncRepo(repoRoot string) error {
 	sourceRoot := filepath.Join(repoRoot, sourceTemplatesDir)
 	targetRoot := filepath.Join(repoRoot, targetTemplatesDir)
 	return Sync(sourceRoot, targetRoot)
 }
 
-func InstallOverrideBackup(sourcePath string) (BackupFileInfo, string, error) {
-	info, err := DetectBackupFile(sourcePath)
-	if err != nil {
-		return BackupFileInfo{}, "", err
-	}
-
-	overrideRoot, err := OverrideTemplatesDir()
-	if err != nil {
-		return BackupFileInfo{}, "", err
-	}
-
-	targetDir := filepath.Join(overrideRoot, info.TargetDir)
-	targetPath := filepath.Join(targetDir, info.FileName)
-
-	for _, existing := range matchingTemplateFiles(targetDir, info.Slot) {
-		if err := os.Remove(existing); err != nil {
-			return BackupFileInfo{}, "", err
-		}
-	}
-
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return BackupFileInfo{}, "", err
-	}
-
-	input, err := os.Open(info.SourcePath)
-	if err != nil {
-		return BackupFileInfo{}, "", err
-	}
-	defer input.Close()
-
-	output, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
-	if err != nil {
-		return BackupFileInfo{}, "", err
-	}
-	defer output.Close()
-
-	if _, err := io.Copy(output, input); err != nil {
-		return BackupFileInfo{}, "", err
-	}
-
-	version, err := writeOverrideManifest(overrideRoot)
-	if err != nil {
-		return BackupFileInfo{}, "", err
-	}
-
-	info.TargetPath = targetPath
-	return info, version, nil
-}
-
 func Sync(sourceRoot string, targetRoot string) error {
 	if err := os.RemoveAll(targetRoot); err != nil {
 		return err
 	}
-	if err := copyTree(sourceRoot, targetRoot); err != nil {
+	if err := copyTreeExceptWordPress(sourceRoot, targetRoot); err != nil {
 		return err
 	}
 
@@ -116,12 +62,16 @@ func Sync(sourceRoot string, targetRoot string) error {
 		return nil
 	}
 
-	manifest, err := BuildManifest(wordPressRoot)
+	targetWordPressRoot := filepath.Join(targetRoot, wordPressDir)
+	if err := syncWordPressTemplates(wordPressRoot, targetWordPressRoot); err != nil {
+		return err
+	}
+
+	manifest, err := BuildManifest(targetWordPressRoot)
 	if err != nil {
 		return err
 	}
 
-	targetWordPressRoot := filepath.Join(targetRoot, wordPressDir)
 	if err := os.MkdirAll(targetWordPressRoot, 0755); err != nil {
 		return err
 	}
@@ -211,35 +161,6 @@ func BuildManifest(wordPressRoot string) (Manifest, error) {
 	return manifest, nil
 }
 
-func DetectBackupFile(sourcePath string) (BackupFileInfo, error) {
-	absolutePath, err := filepath.Abs(sourcePath)
-	if err != nil {
-		return BackupFileInfo{}, err
-	}
-
-	fileName := filepath.Base(absolutePath)
-	match := backupTypePattern.FindStringSubmatch(strings.ToLower(fileName))
-	if match == nil {
-		return BackupFileInfo{}, fmt.Errorf("unsupported Updraft backup name: %s", fileName)
-	}
-
-	slot := match[1]
-	category := categoryForSlot(slot)
-	if category == "" {
-		return BackupFileInfo{}, fmt.Errorf("unsupported Updraft backup type: %s", slot)
-	}
-
-	targetDir := filepath.Join(wordPressDir, category)
-
-	return BackupFileInfo{
-		SourcePath: absolutePath,
-		FileName:   fileName,
-		Slot:       slot,
-		Category:   category,
-		TargetDir:  targetDir,
-	}, nil
-}
-
 func EmbeddedDataVersion(repoRoot string) (string, error) {
 	content, err := os.ReadFile(filepath.Join(repoRoot, targetTemplatesDir, wordPressDir, dataVersionFile))
 	if err != nil {
@@ -249,16 +170,7 @@ func EmbeddedDataVersion(repoRoot string) (string, error) {
 	return strings.TrimSpace(string(content)), nil
 }
 
-func OverrideTemplatesDir() (string, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join(configDir, configDirName, "templates"), nil
-}
-
-func copyTree(sourceRoot string, targetRoot string) error {
+func copyTreeExceptWordPress(sourceRoot string, targetRoot string) error {
 	return filepath.WalkDir(sourceRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -267,6 +179,12 @@ func copyTree(sourceRoot string, targetRoot string) error {
 		relative, err := filepath.Rel(sourceRoot, path)
 		if err != nil {
 			return err
+		}
+		if relative == wordPressDir || strings.HasPrefix(relative, wordPressDir+string(os.PathSeparator)) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		targetPath := filepath.Join(targetRoot, relative)
 
@@ -285,6 +203,109 @@ func copyTree(sourceRoot string, targetRoot string) error {
 
 		return copyFile(path, targetPath, info.Mode().Perm())
 	})
+}
+
+func syncWordPressTemplates(sourceRoot string, targetRoot string) error {
+	return filepath.WalkDir(sourceRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		relative, err := filepath.Rel(sourceRoot, path)
+		if err != nil {
+			return err
+		}
+
+		targetRelative, err := normalizeWordPressRelativePath(relative)
+		if err != nil {
+			return err
+		}
+		targetPath := filepath.Join(targetRoot, targetRelative)
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return err
+		}
+
+		return copyFile(path, targetPath, info.Mode().Perm())
+	})
+}
+
+func normalizeWordPressRelativePath(relative string) (string, error) {
+	clean := filepath.Clean(relative)
+	if clean == "." {
+		return clean, nil
+	}
+
+	dir := filepath.Dir(clean)
+	base := filepath.Base(clean)
+	if dir == "." {
+		category, ok, err := classifyLooseWordPressBackup(base)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			return filepath.Join(category, base), nil
+		}
+		return clean, nil
+	}
+
+	firstSegment := strings.Split(filepath.ToSlash(clean), "/")[0]
+	if _, ok := wordpressBackupCategories[firstSegment]; ok {
+		return clean, nil
+	}
+
+	return clean, nil
+}
+
+func classifyLooseWordPressBackup(name string) (string, bool, error) {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	switch {
+	case lower == "" || lower == ".gitkeep":
+		return "", false, nil
+	case strings.HasSuffix(lower, "-db.gz"), strings.HasSuffix(lower, "-db.sql"), lower == "db.sql", lower == "db.gz":
+		return "database", true, nil
+	case isNumberedArchive(lower, "plugins"):
+		return "plugins", true, nil
+	case isNumberedArchive(lower, "uploads"):
+		return "uploads", true, nil
+	case isNumberedArchive(lower, "others"):
+		return "others", true, nil
+	case isNumberedArchive(lower, "themes"):
+		return "themes", true, nil
+	case strings.HasSuffix(lower, ".zip"), strings.HasSuffix(lower, ".sql"), strings.HasSuffix(lower, ".gz"):
+		return "", false, fmt.Errorf("unsupported wordpress backup file in templates/wordpress: %s", name)
+	default:
+		return "", false, nil
+	}
+}
+
+func isNumberedArchive(name string, prefix string) bool {
+	if !strings.HasSuffix(name, ".zip") {
+		return false
+	}
+	stem := strings.TrimSuffix(name, ".zip")
+	idx := strings.LastIndex(stem, "-"+prefix)
+	if idx == -1 {
+		return false
+	}
+	suffix := stem[idx+len(prefix)+1:]
+	if suffix == "" {
+		return true
+	}
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func copyFile(sourcePath string, targetPath string, mode os.FileMode) error {
@@ -331,79 +352,4 @@ func dirExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
-}
-
-func writeOverrideManifest(overrideRoot string) (string, error) {
-	wordPressRoot := filepath.Join(overrideRoot, wordPressDir)
-	exists, err := dirExists(wordPressRoot)
-	if err != nil {
-		return "", err
-	}
-	if !exists {
-		return "", fmt.Errorf("override directory does not exist: %s", wordPressRoot)
-	}
-
-	manifest, err := BuildManifest(wordPressRoot)
-	if err != nil {
-		return "", err
-	}
-
-	versionPath := filepath.Join(wordPressRoot, dataVersionFile)
-	if err := os.WriteFile(versionPath, []byte(manifest.Version+"\n"), 0644); err != nil {
-		return "", err
-	}
-
-	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return "", err
-	}
-
-	manifestPath := filepath.Join(wordPressRoot, manifestFile)
-	if err := os.WriteFile(manifestPath, append(manifestBytes, '\n'), 0644); err != nil {
-		return "", err
-	}
-
-	return manifest.Version, nil
-}
-
-func categoryForSlot(slot string) string {
-	switch {
-	case slot == "db":
-		return "database"
-	case strings.HasPrefix(slot, "plugins"):
-		return "plugins"
-	case strings.HasPrefix(slot, "uploads"):
-		return "uploads"
-	case strings.HasPrefix(slot, "others"):
-		return "others"
-	default:
-		return ""
-	}
-}
-
-func matchingTemplateFiles(targetDir string, slot string) []string {
-	entries, err := os.ReadDir(targetDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return nil
-	}
-
-	var matches []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		info, err := DetectBackupFile(filepath.Join(targetDir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		if info.Slot == slot {
-			matches = append(matches, filepath.Join(targetDir, entry.Name()))
-		}
-	}
-
-	return matches
 }

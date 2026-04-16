@@ -1,6 +1,10 @@
 package steps
 
 import (
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,6 +32,7 @@ func TestImportPluginsStepExtractsMultipleArchives(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(ctx.Paths.Plugins, "advanced-custom-fields-pro"),
 		filepath.Join(ctx.Paths.Plugins, "wp-optimize"),
+		filepath.Join(ctx.Paths.Plugins, "contact-form-7"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)
@@ -44,6 +49,9 @@ func TestImportOthersStepExtractsIntoWPContentWithoutNestedExpansion(t *testing.
 
 	if _, err := os.Stat(filepath.Join(ctx.Paths.WPContent, "uploads.zip")); err != nil {
 		t.Fatalf("expected uploads.zip to exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ctx.Paths.WPContent, "mu-plugins", "b.php")); err != nil {
+		t.Fatalf("expected mu-plugins/b.php to exist: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(ctx.Paths.WPContent, "cache", "acorn")); err != nil {
 		t.Fatalf("expected cache/acorn to exist: %v", err)
@@ -77,6 +85,54 @@ func TestImportDatabaseStepWritesSQLAndRunsRewrite(t *testing.T) {
 	}
 }
 
+func TestClearImportedCachesStepRemovesCacheDirAndRunsFlushCommands(t *testing.T) {
+	runner := &recordingRunner{}
+	ctx := newRestoreTestContext(t)
+	ctx.Runner = runner
+
+	cacheFile := filepath.Join(ctx.Paths.WPContent, "cache", "acorn", "framework", "cache", "data", "old.txt")
+	if err := os.MkdirAll(filepath.Dir(cacheFile), 0755); err != nil {
+		t.Fatalf("failed to create cache dir: %v", err)
+	}
+	if err := os.WriteFile(cacheFile, []byte("stale"), 0644); err != nil {
+		t.Fatalf("failed to write cache file: %v", err)
+	}
+
+	if err := NewClearImportedCachesStep().Run(ctx); err != nil {
+		t.Fatalf("ClearImportedCachesStep returned error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(ctx.Paths.WPContent, "cache")); !os.IsNotExist(err) {
+		t.Fatalf("expected cache dir to be removed, got err=%v", err)
+	}
+	if len(runner.commands) != 2 {
+		t.Fatalf("expected 2 commands, got %d", len(runner.commands))
+	}
+	if got := runner.commands[0].args; len(got) != 3 || got[0] != "wp" || got[1] != "cache" || got[2] != "flush" {
+		t.Fatalf("unexpected wp cache flush args: %#v", got)
+	}
+	if got := runner.commands[1].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "optimize:clear" {
+		t.Fatalf("unexpected wp acorn optimize:clear args: %#v", got)
+	}
+}
+
+func TestClearImportedCachesStepWarnsWhenAcornClearFails(t *testing.T) {
+	logger := &starterTestLogger{}
+	runner := &recordingRunner{runErrByCommand: map[string]error{
+		"lando wp acorn optimize:clear": errors.New("missing acorn"),
+	}}
+	ctx := newRestoreTestContext(t)
+	ctx.Runner = runner
+	ctx.Logger = logger
+
+	if err := NewClearImportedCachesStep().Run(ctx); err != nil {
+		t.Fatalf("ClearImportedCachesStep returned error: %v", err)
+	}
+	if len(logger.warnings) == 0 {
+		t.Fatal("expected warning when Acorn clear fails")
+	}
+}
+
 type recordedCommand struct {
 	dir  string
 	cmd  string
@@ -84,7 +140,8 @@ type recordedCommand struct {
 }
 
 type recordingRunner struct {
-	commands []recordedCommand
+	commands        []recordedCommand
+	runErrByCommand map[string]error
 }
 
 func (r *recordingRunner) Run(dir string, cmd string, args ...string) error {
@@ -93,11 +150,27 @@ func (r *recordingRunner) Run(dir string, cmd string, args ...string) error {
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	if r.runErrByCommand != nil {
+		if err, ok := r.runErrByCommand[cmd+" "+joinArgs(args)]; ok {
+			return err
+		}
+	}
 	return nil
 }
 
 func (r *recordingRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
 	return "", nil
+}
+
+func joinArgs(args []string) string {
+	result := ""
+	for i, arg := range args {
+		if i > 0 {
+			result += " "
+		}
+		result += arg
+	}
+	return result
 }
 
 func newRestoreTestContext(t *testing.T) *create.Context {
@@ -113,5 +186,87 @@ func newRestoreTestContext(t *testing.T) *create.Context {
 		}
 	}
 
+	ctx.StarterData = create.StarterData{
+		Mode: starterDataModeEmbedded,
+		DatabasePath: writeGzipFixture(t, baseDir, "starter-db.gz", ""+
+			"# Backup of: https://starter.tamago-dev.pl\n"+
+			"# Home URL: https://starter.tamago-dev.pl\n"+
+			"SELECT 1;\n"),
+		PluginsPaths: []string{
+			writeZipFixture(t, baseDir, "starter-plugins-a.zip", map[string]string{
+				"plugins/advanced-custom-fields-pro/acf.php": "<?php\n",
+			}),
+			writeZipFixture(t, baseDir, "starter-plugins-b.zip", map[string]string{
+				"plugins/wp-optimize/wp-optimize.php":          "<?php\n",
+				"plugins/contact-form-7/wp-contact-form-7.php": "<?php\n",
+			}),
+		},
+		UploadsPaths: []string{
+			writeZipFixture(t, baseDir, "starter-uploads-a.zip", map[string]string{
+				"uploads/2025/07/example.jpg": "image",
+			}),
+			writeZipFixture(t, baseDir, "starter-uploads-b.zip", map[string]string{
+				"uploads/2026/readme.txt": "uploaded",
+			}),
+		},
+		OthersPaths: []string{
+			writeZipFixture(t, baseDir, "starter-others-a.zip", map[string]string{
+				"uploads.zip":       "nested",
+				"cache/acorn/.keep": "cache",
+			}),
+			writeZipFixture(t, baseDir, "starter-others-b.zip", map[string]string{
+				"mu-plugins/a.php": "<?php\n",
+				"mu-plugins/b.php": "<?php\n",
+			}),
+		},
+	}
+
 	return ctx
+}
+
+func writeZipFixture(t *testing.T, dir string, name string, files map[string]string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+	output, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("failed to create %s: %v", path, err)
+	}
+	defer output.Close()
+
+	writer := zip.NewWriter(output)
+	for fileName, content := range files {
+		entry, err := writer.Create(fileName)
+		if err != nil {
+			t.Fatalf("failed to create zip entry %s: %v", fileName, err)
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			t.Fatalf("failed to write zip entry %s: %v", fileName, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+
+	return path
+}
+
+func writeGzipFixture(t *testing.T, dir string, name string, content string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+	var buffer bytes.Buffer
+	writer := gzip.NewWriter(&buffer)
+	if _, err := writer.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write gzip content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close gzip writer: %v", err)
+	}
+
+	if err := os.WriteFile(path, buffer.Bytes(), 0644); err != nil {
+		t.Fatalf("failed to write %s: %v", path, err)
+	}
+
+	return path
 }

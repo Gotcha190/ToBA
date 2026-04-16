@@ -2,10 +2,11 @@ package steps
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/gotcha190/ToBA/internal/create"
 	"github.com/gotcha190/ToBA/internal/project"
-	"github.com/gotcha190/ToBA/internal/templates"
 	"github.com/gotcha190/ToBA/internal/wordpress"
 )
 
@@ -20,12 +21,8 @@ func (s *ImportDatabaseStep) Name() string {
 }
 
 func (s *ImportDatabaseStep) Run(ctx *create.Context) error {
-	archives, err := listTemplateFiles("wordpress/database", ".gz")
-	if err != nil {
-		return err
-	}
-	if len(archives) != 1 {
-		return fmt.Errorf("expected 1 database archive in wordpress/database, found %d", len(archives))
+	if ctx.StarterData.DatabasePath == "" {
+		return fmt.Errorf("database starter file is not prepared")
 	}
 
 	targetURL, err := wordpress.LocalHTTPSURL(ctx.Config.Domain)
@@ -34,25 +31,37 @@ func (s *ImportDatabaseStep) Run(ctx *create.Context) error {
 	}
 
 	if ctx.DryRun {
-		ctx.Logger.Info("Would extract: " + archives[0] + " -> " + relativePath(ctx.Paths.Root, ctx.Paths.DatabaseSQL))
+		ctx.Logger.Info("Would prepare database: " + ctx.StarterData.DatabasePath + " -> " + relativePath(ctx.Paths.Root, ctx.Paths.DatabaseSQL))
 		ctx.Logger.Info("Would run: lando db-import " + relativePath(ctx.Paths.Root, ctx.Paths.DatabaseSQL))
-		ctx.Logger.Info("Would run: lando wp search-replace <backup-url> " + targetURL + " --all-tables-with-prefix --skip-columns=guid")
+		sourceURL := ctx.StarterData.SourceURL
+		if sourceURL == "" {
+			sourceURL = "<backup-url>"
+		}
+		ctx.Logger.Info("Would run: lando wp search-replace " + sourceURL + " " + targetURL + " --all-tables-with-prefix --skip-columns=guid")
 		return nil
 	}
 
-	content, err := templates.Read(archives[0])
-	if err != nil {
-		return err
-	}
-	if err := project.WriteGzipFile(content, ctx.Paths.DatabaseSQL); err != nil {
-		return fmt.Errorf("expand %s: %w", archives[0], err)
+	switch strings.ToLower(filepath.Ext(ctx.StarterData.DatabasePath)) {
+	case ".gz":
+		if err := project.WriteGzipPath(ctx.StarterData.DatabasePath, ctx.Paths.DatabaseSQL); err != nil {
+			return fmt.Errorf("expand %s: %w", ctx.StarterData.DatabasePath, err)
+		}
+	case ".sql":
+		if err := project.CopyFile(ctx.StarterData.DatabasePath, ctx.Paths.DatabaseSQL); err != nil {
+			return fmt.Errorf("copy %s: %w", ctx.StarterData.DatabasePath, err)
+		}
+	default:
+		return fmt.Errorf("unsupported database file: %s", ctx.StarterData.DatabasePath)
 	}
 
-	sourceURL, err := wordpress.BackupSourceURL(ctx.Paths.DatabaseSQL)
-	if err != nil {
-		return err
+	sourceURL := ctx.StarterData.SourceURL
+	if sourceURL == "" {
+		sourceURL, err = wordpress.BackupSourceURL(ctx.Paths.DatabaseSQL)
+		if err != nil {
+			return err
+		}
 	}
-	ctx.Logger.Info("Expanded: " + archives[0])
+	ctx.Logger.Info("Prepared database: " + ctx.StarterData.DatabasePath)
 
 	if err := wordpress.ImportDatabase(ctx.Runner, ctx.Paths.Root, ctx.Paths.DatabaseSQL); err != nil {
 		return err

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gotcha190/ToBA/internal/create"
@@ -19,6 +20,7 @@ type recordedCommand struct {
 type fakeRunner struct {
 	commands []recordedCommand
 	err      error
+	outputs  map[string]string
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
@@ -31,7 +33,15 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 }
 
 func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	return "", r.err
+	r.commands = append(r.commands, recordedCommand{
+		dir:  dir,
+		cmd:  cmd,
+		args: append([]string(nil), args...),
+	})
+	if r.err != nil {
+		return "", r.err
+	}
+	return r.outputs[cmd+" "+strings.Join(args, " ")], nil
 }
 
 func TestInstallRunsExpectedCommands(t *testing.T) {
@@ -191,6 +201,39 @@ func TestActivateThemeRunsExpectedCommand(t *testing.T) {
 	}
 }
 
+func TestDetectImportedThemeSlugPrefersStylesheet(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"lando wp option get stylesheet": "sage\n",
+		},
+	}
+
+	got, err := DetectImportedThemeSlug(runner, "/tmp/demo")
+	if err != nil {
+		t.Fatalf("DetectImportedThemeSlug returned error: %v", err)
+	}
+	if got != "sage" {
+		t.Fatalf("unexpected theme slug: %q", got)
+	}
+}
+
+func TestDetectImportedThemeSlugFallsBackToTemplate(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"lando wp option get stylesheet": "\n",
+			"lando wp option get template":   "sage-fallback\n",
+		},
+	}
+
+	got, err := DetectImportedThemeSlug(runner, "/tmp/demo")
+	if err != nil {
+		t.Fatalf("DetectImportedThemeSlug returned error: %v", err)
+	}
+	if got != "sage-fallback" {
+		t.Fatalf("unexpected theme slug: %q", got)
+	}
+}
+
 func TestFlushRewriteRulesRunsExpectedCommand(t *testing.T) {
 	runner := &fakeRunner{}
 
@@ -203,6 +246,36 @@ func TestFlushRewriteRulesRunsExpectedCommand(t *testing.T) {
 			dir:  "/tmp/demo",
 			cmd:  "lando",
 			args: []string{"wp", "rewrite", "flush", "--hard"},
+		},
+	}
+
+	if !reflect.DeepEqual(runner.commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	}
+}
+
+func TestRefreshThemeCachesRunsExpectedCommands(t *testing.T) {
+	runner := &fakeRunner{}
+
+	if err := RefreshThemeCaches(runner, "/tmp/demo"); err != nil {
+		t.Fatalf("RefreshThemeCaches returned error: %v", err)
+	}
+
+	expected := []recordedCommand{
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "optimize"},
+		},
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "cache:clear"},
+		},
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "acf:cache"},
 		},
 	}
 
