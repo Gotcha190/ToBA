@@ -9,7 +9,8 @@ type Context struct {
 
 	StarterData StarterData
 
-	ProjectCreated bool
+	ProjectCreated        bool
+	UseExistingProjectDir bool
 }
 
 type StarterData struct {

@@ -17,7 +17,7 @@ func (s *GenerateAcornKeyStep) Name() string {
 
 func (s *GenerateAcornKeyStep) Run(ctx *create.Context) error {
 	if len(ctx.StarterData.ThemePaths) > 0 {
-		ctx.Logger.Info("Skipping Acorn key generation: using embedded theme backup")
+		ctx.Logger.Info("Skipping Acorn key generation: using local theme backup")
 		return nil
 	}
 

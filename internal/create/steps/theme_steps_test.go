@@ -40,7 +40,7 @@ func (r *themeStepRunner) CaptureOutput(dir string, cmd string, args ...string) 
 	return r.outputs[key], nil
 }
 
-func TestInstallThemeStepUsesEmbeddedThemesBackup(t *testing.T) {
+func TestInstallThemeStepUsesLocalThemesBackup(t *testing.T) {
 	ctx := newThemeStepContext(t)
 	ctx.StarterData.ThemePaths = []string{
 		writeZipFixture(t, ctx.Paths.Root, "starter-themes.zip", map[string]string{
@@ -57,7 +57,7 @@ func TestInstallThemeStepUsesEmbeddedThemesBackup(t *testing.T) {
 	}
 }
 
-func TestBuildThemeStepSkipsWhenEmbeddedThemeBackupExists(t *testing.T) {
+func TestBuildThemeStepSkipsWhenLocalThemeBackupExists(t *testing.T) {
 	runner := &themeStepRunner{}
 	ctx := newThemeStepContext(t)
 	ctx.Runner = runner
@@ -71,7 +71,7 @@ func TestBuildThemeStepSkipsWhenEmbeddedThemeBackupExists(t *testing.T) {
 	}
 }
 
-func TestActivateThemeStepUsesDatabaseThemeSlugForEmbeddedThemeBackup(t *testing.T) {
+func TestActivateThemeStepUsesDatabaseThemeSlugForLocalThemeBackup(t *testing.T) {
 	runner := &themeStepRunner{
 		outputs: map[string]string{
 			"lando wp option get stylesheet": "sage\n",
@@ -93,7 +93,7 @@ func TestActivateThemeStepUsesDatabaseThemeSlugForEmbeddedThemeBackup(t *testing
 	}
 }
 
-func TestGenerateAcornKeyStepSkipsWhenEmbeddedThemeBackupExists(t *testing.T) {
+func TestGenerateAcornKeyStepSkipsWhenLocalThemeBackupExists(t *testing.T) {
 	runner := &themeStepRunner{}
 	ctx := newThemeStepContext(t)
 	ctx.Runner = runner

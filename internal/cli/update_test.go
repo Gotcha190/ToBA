@@ -7,14 +7,13 @@ import (
 	"testing"
 )
 
-func TestRunUpdateSyncsTemplates(t *testing.T) {
+func TestRunUpdateSyncsStaticTemplatesOnly(t *testing.T) {
 	repoRoot := newUpdateRepoRoot(t)
 	withWorkingDir(t, repoRoot)
 
 	writeUpdateTestFile(t, filepath.Join(repoRoot, "templates", "wp-cli.yml"), "path: app\n")
+	writeUpdateTestFile(t, filepath.Join(repoRoot, "templates", "config", "php.ini"), "memory_limit=512M\n")
 	writeUpdateTestFile(t, filepath.Join(repoRoot, "templates", "wordpress", "backup_2026-04-14-0921_demo_1234-plugins.zip"), "plugins")
-	writeUpdateTestFile(t, filepath.Join(repoRoot, "templates", "wordpress", "backup_2026-04-14-0921_demo_1234-db.gz"), "db")
-	writeUpdateTestFile(t, filepath.Join(repoRoot, "templates", "wordpress", "backup_2026-04-14-0921_demo_1234-themes.zip"), "themes")
 
 	if err := RunUpdate(); err != nil {
 		t.Fatalf("RunUpdate returned error: %v", err)
@@ -22,15 +21,15 @@ func TestRunUpdateSyncsTemplates(t *testing.T) {
 
 	for _, path := range []string{
 		filepath.Join(repoRoot, "internal", "templates", "files", "wp-cli.yml"),
-		filepath.Join(repoRoot, "internal", "templates", "files", "wordpress", "plugins", "backup_2026-04-14-0921_demo_1234-plugins.zip"),
-		filepath.Join(repoRoot, "internal", "templates", "files", "wordpress", "database", "backup_2026-04-14-0921_demo_1234-db.gz"),
-		filepath.Join(repoRoot, "internal", "templates", "files", "wordpress", "themes", "backup_2026-04-14-0921_demo_1234-themes.zip"),
-		filepath.Join(repoRoot, "internal", "templates", "files", "wordpress", "DATA_VERSION"),
-		filepath.Join(repoRoot, "internal", "templates", "files", "wordpress", "manifest.json"),
+		filepath.Join(repoRoot, "internal", "templates", "files", "config", "php.ini"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)
 		}
+	}
+
+	if _, err := os.Stat(filepath.Join(repoRoot, "internal", "templates", "files", "wordpress")); !os.IsNotExist(err) {
+		t.Fatalf("expected wordpress templates to be ignored, got err=%v", err)
 	}
 }
 

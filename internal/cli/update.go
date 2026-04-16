@@ -27,12 +27,7 @@ func RunUpdate() error {
 		return err
 	}
 
-	version, err := templatesync.EmbeddedDataVersion(repoRoot)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Synced templates to embedded files. Data version: %s\n", version)
+	fmt.Println("Synced static templates to embedded files.")
 	return nil
 }
 
