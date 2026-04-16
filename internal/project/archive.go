@@ -17,6 +17,30 @@ func ExtractZip(data []byte, destDir string) error {
 		return err
 	}
 
+	return extractZip(reader, destDir)
+}
+
+func ExtractZipFile(sourcePath string, destDir string) error {
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	reader, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		return err
+	}
+
+	return extractZip(reader, destDir)
+}
+
+func extractZip(reader *zip.Reader, destDir string) error {
 	for _, file := range reader.File {
 		targetPath, err := secureJoin(destDir, file.Name)
 		if err != nil {
@@ -80,11 +104,51 @@ func WriteGzipFile(data []byte, destPath string) error {
 	}
 	defer reader.Close()
 
+	return copyReaderToFile(reader, destPath, 0644)
+}
+
+func WriteGzipPath(sourcePath string, destPath string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	reader, err := gzip.NewReader(source)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	return copyReaderToFile(reader, destPath, 0644)
+}
+
+func CopyFile(sourcePath string, destPath string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	info, err := source.Stat()
+	if err != nil {
+		return err
+	}
+
+	mode := info.Mode().Perm()
+	if mode == 0 {
+		mode = 0644
+	}
+
+	return copyReaderToFile(source, destPath, mode)
+}
+
+func copyReaderToFile(reader io.Reader, destPath string, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return err
 	}
 
-	output, err := os.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	output, err := os.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
 	if err != nil {
 		return err
 	}

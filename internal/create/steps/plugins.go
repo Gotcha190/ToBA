@@ -13,5 +13,5 @@ func (s *ImportPluginsStep) Name() string {
 }
 
 func (s *ImportPluginsStep) Run(ctx *create.Context) error {
-	return restoreTemplateZips(ctx, "wordpress/plugins", ctx.Paths.WPContent)
+	return restoreLocalZips(ctx, ctx.StarterData.PluginsPaths, ctx.Paths.WPContent, "plugins")
 }

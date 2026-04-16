@@ -7,57 +7,43 @@ import (
 
 	"github.com/gotcha190/ToBA/internal/create"
 	"github.com/gotcha190/ToBA/internal/project"
-	"github.com/gotcha190/ToBA/internal/templates"
 )
 
-func restoreTemplateZips(ctx *create.Context, templateDir string, destination string) error {
-	archives, err := listTemplateFiles(templateDir, ".zip")
-	if err != nil {
-		return err
-	}
-	if len(archives) == 0 {
-		return fmt.Errorf("no ZIP archives found in %s", templateDir)
+func restoreLocalZip(ctx *create.Context, archivePath string, destination string, label string) error {
+	if archivePath == "" {
+		return fmt.Errorf("%s archive is not prepared", label)
 	}
 
-	for _, archive := range archives {
-		if ctx.DryRun {
-			ctx.Logger.Info("Would extract: " + archive + " -> " + destination)
-			continue
-		}
-
-		content, err := templates.Read(archive)
-		if err != nil {
-			return err
-		}
-		if err := project.ExtractZip(content, destination); err != nil {
-			return fmt.Errorf("extract %s: %w", archive, err)
-		}
-
-		ctx.Logger.Info("Extracted: " + archive)
+	if ctx.DryRun {
+		ctx.Logger.Info("Would extract: " + archivePath + " -> " + destination)
+		return nil
 	}
 
+	if err := project.ExtractZipFile(archivePath, destination); err != nil {
+		return fmt.Errorf("extract %s: %w", archivePath, err)
+	}
+
+	ctx.Logger.Info("Extracted: " + archivePath)
 	return nil
 }
 
-func listTemplateFiles(templateDir string, suffix string) ([]string, error) {
-	if strings.HasPrefix(templateDir, "wordpress/") {
-		category := strings.TrimPrefix(templateDir, "wordpress/")
-		return templates.WordPressBackupFiles(category, suffix)
+func restoreLocalZips(ctx *create.Context, archivePaths []string, destination string, label string) error {
+	if len(archivePaths) == 0 {
+		return fmt.Errorf("%s archives are not prepared", label)
 	}
 
-	entries, err := templates.List(templateDir)
-	if err != nil {
-		return nil, err
+	if ctx.DryRun {
+		ctx.Logger.Info("Would extract " + label + ": " + strings.Join(archivePaths, ", "))
+		return nil
 	}
 
-	var matches []string
-	for _, entry := range entries {
-		if strings.HasSuffix(strings.ToLower(entry), strings.ToLower(suffix)) {
-			matches = append(matches, entry)
+	for _, archivePath := range archivePaths {
+		if err := restoreLocalZip(ctx, archivePath, destination, label); err != nil {
+			return err
 		}
 	}
 
-	return matches, nil
+	return nil
 }
 
 func relativePath(baseDir string, target string) string {

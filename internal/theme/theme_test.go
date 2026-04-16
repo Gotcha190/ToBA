@@ -28,6 +28,11 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
+		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
+			return err
+		}
+	}
 	return r.err
 }
 
@@ -74,25 +79,26 @@ func TestInstallRunsCloneCommand(t *testing.T) {
 
 func TestBuildRunsExpectedCommands(t *testing.T) {
 	runner := &fakeRunner{}
+	themeDir := "/tmp/demo-theme"
 
-	err := Build(runner, "/tmp/demo-theme")
+	err := Build(runner, themeDir)
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
 
 	expected := []recordedCommand{
 		{
-			dir:  "/tmp/demo-theme",
+			dir:  themeDir,
 			cmd:  "lando",
 			args: []string{"composer", "install"},
 		},
 		{
-			dir:  "/tmp/demo-theme",
+			dir:  themeDir,
 			cmd:  "npm",
 			args: []string{"i"},
 		},
 		{
-			dir:  "/tmp/demo-theme",
+			dir:  themeDir,
 			cmd:  "npm",
 			args: []string{"run", "build"},
 		},

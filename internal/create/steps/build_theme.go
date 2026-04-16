@@ -18,6 +18,11 @@ func (s *BuildThemeStep) Name() string {
 }
 
 func (s *BuildThemeStep) Run(ctx *create.Context) error {
+	if len(ctx.StarterData.ThemePaths) > 0 {
+		ctx.Logger.Info("Skipping starter build: using embedded theme backup")
+		return nil
+	}
+
 	themeDir := filepath.Join(ctx.Paths.Themes, ctx.Config.Name)
 
 	if ctx.DryRun {

@@ -165,9 +165,39 @@ func ActivateTheme(runner create.CommandRunner, projectDir string, themeName str
 	return nil
 }
 
+func DetectImportedThemeSlug(runner create.CommandRunner, projectDir string) (string, error) {
+	for _, option := range []string{"stylesheet", "template"} {
+		value, err := runner.CaptureOutput(projectDir, "lando", "wp", "option", "get", option)
+		if err != nil {
+			return "", fmt.Errorf("theme detection failed for option %s: %w", option, err)
+		}
+
+		slug := strings.TrimSpace(value)
+		if slug != "" {
+			return slug, nil
+		}
+	}
+
+	return "", fmt.Errorf("theme detection failed: imported database does not expose stylesheet/template")
+}
+
 func FlushRewriteRules(runner create.CommandRunner, projectDir string) error {
 	if err := runner.Run(projectDir, "lando", "wp", "rewrite", "flush", "--hard"); err != nil {
 		return fmt.Errorf("rewrite flush failed: %w", err)
+	}
+
+	return nil
+}
+
+func RefreshThemeCaches(runner create.CommandRunner, projectDir string) error {
+	for _, args := range [][]string{
+		{"wp", "acorn", "optimize"},
+		{"wp", "acorn", "cache:clear"},
+		{"wp", "acorn", "acf:cache"},
+	} {
+		if err := runner.Run(projectDir, "lando", args...); err != nil {
+			return fmt.Errorf("theme cache refresh failed for %s: %w", strings.Join(args, " "), err)
+		}
 	}
 
 	return nil

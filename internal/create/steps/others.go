@@ -13,5 +13,10 @@ func (s *ImportOthersStep) Name() string {
 }
 
 func (s *ImportOthersStep) Run(ctx *create.Context) error {
-	return restoreTemplateZips(ctx, "wordpress/others", ctx.Paths.WPContent)
+	if len(ctx.StarterData.OthersPaths) == 0 {
+		ctx.Logger.Info("Skipping others import: no embedded others override prepared")
+		return nil
+	}
+
+	return restoreLocalZips(ctx, ctx.StarterData.OthersPaths, ctx.Paths.WPContent, "others")
 }

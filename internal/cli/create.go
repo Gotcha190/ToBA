@@ -15,6 +15,7 @@ type CreateOptions struct {
 	PHPVersion  string
 	Domain      string
 	StarterRepo string
+	SSHTarget   string
 	DryRun      bool
 }
 
@@ -47,6 +48,9 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	if opts.StarterRepo != "" {
 		config.StarterRepo = opts.StarterRepo
 	}
+	if opts.SSHTarget != "" {
+		config.SSHTarget = opts.SSHTarget
+	}
 	config.DryRun = opts.DryRun
 
 	if strings.TrimSpace(config.Name) == "" {
@@ -66,10 +70,19 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	}
 
 	ctx := create.NewContext(cwd, config, create.ConsoleLogger{}, runner)
+	defer func() {
+		if ctx.StarterData.TempDir == "" {
+			return
+		}
+		if err := os.RemoveAll(ctx.StarterData.TempDir); err != nil {
+			ctx.Logger.Warning("Failed to remove starter temp dir: " + ctx.StarterData.TempDir)
+		}
+	}()
 
 	pipeline := create.Pipeline{
 		Steps: []create.Step{
 			steps.NewCollectConfigStep(),
+			steps.NewPrepareStarterDataStep(),
 			steps.NewProjectDirStep(),
 			steps.NewGenerateLandoConfigStep(),
 			steps.NewStartLandoStep(),
@@ -80,10 +93,12 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 			steps.NewImportUploadsStep(),
 			steps.NewImportOthersStep(),
 			steps.NewImportDatabaseStep(),
+			steps.NewClearImportedCachesStep(),
 			steps.NewResetAdminPasswordStep(),
 			steps.NewActivateThemeStep(),
 			steps.NewGenerateAcornKeyStep(),
 			steps.NewFlushRewriteRulesStep(),
+			steps.NewRefreshThemeCachesStep(),
 		},
 	}
 
