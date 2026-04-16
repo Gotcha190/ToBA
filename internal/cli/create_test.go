@@ -187,7 +187,7 @@ func TestRunCreateCreatesProjectSkeleton(t *testing.T) {
 			args: []string{
 				"wp",
 				"search-replace",
-				"https://toet-szablon.lndo.site",
+				"https://glowow.lndo.site",
 				"https://demo.lndo.site",
 				"--all-tables-with-prefix",
 				"--skip-columns=guid",
