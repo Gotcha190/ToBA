@@ -18,7 +18,7 @@ func (s *InstallThemeStep) Name() string {
 func (s *InstallThemeStep) Run(ctx *create.Context) error {
 	if len(ctx.StarterData.ThemePaths) > 0 {
 		if ctx.DryRun {
-			ctx.Logger.Info("Would extract themes: " + ctx.Paths.WPContent)
+			ctx.Logger.Info("Would extract local themes: " + ctx.Paths.WPContent)
 			return nil
 		}
 

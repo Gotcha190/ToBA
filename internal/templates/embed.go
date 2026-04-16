@@ -4,7 +4,6 @@ import (
 	"embed"
 	"io/fs"
 	"path"
-	"sort"
 	"strings"
 )
 
@@ -37,35 +36,6 @@ func templatePath(name string) string {
 
 	return path.Join("files", cleaned)
 }
-
-func WordPressDataVersion() (string, error) {
-	content, err := Read("wordpress/DATA_VERSION")
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(content)), nil
-}
-
-func WordPressBackupFiles(category string, suffix string) ([]string, error) {
-	relativeDir := path.Join("wordpress", category)
-	entries, err := listEmbedded(relativeDir)
-	if err != nil {
-		return nil, err
-	}
-
-	var matches []string
-	for _, file := range entries {
-		if !strings.HasSuffix(strings.ToLower(file), strings.ToLower(suffix)) {
-			continue
-		}
-		matches = append(matches, file)
-	}
-
-	sort.Strings(matches)
-	return matches, nil
-}
-
 func listEmbedded(dir string) ([]string, error) {
 	root := templatePath(dir)
 	var entries []string

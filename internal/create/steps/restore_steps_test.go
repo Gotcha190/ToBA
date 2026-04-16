@@ -187,7 +187,7 @@ func newRestoreTestContext(t *testing.T) *create.Context {
 	}
 
 	ctx.StarterData = create.StarterData{
-		Mode: starterDataModeEmbedded,
+		Mode: starterDataModeLocal,
 		DatabasePath: writeGzipFixture(t, baseDir, "starter-db.gz", ""+
 			"# Backup of: https://starter.tamago-dev.pl\n"+
 			"# Home URL: https://starter.tamago-dev.pl\n"+

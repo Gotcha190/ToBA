@@ -47,60 +47,55 @@ func (r *starterTestRunner) CaptureOutput(dir string, cmd string, args ...string
 	return r.captureOutput, nil
 }
 
-func TestPrepareStarterDataUsesEmbeddedOverrideWhenComplete(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": {"wordpress/database/starter.sql"},
-			"database|.gz":  nil,
-			"plugins|.zip":  {"wordpress/plugins/starter-plugins.zip"},
-			"uploads|.zip":  {"wordpress/uploads/starter-uploads.zip"},
-			"others|.zip":   {"wordpress/others/starter-others.zip"},
-		},
-		map[string][]byte{
-			"wordpress/database/starter.sql": []byte("# Home URL: https://starter.tamago-dev.pl\nSELECT 1;\n"),
-			"wordpress/plugins/starter-plugins.zip": zippedBytes(t, map[string]string{
-				"plugins/a/a.php": "<?php\n",
-			}),
-			"wordpress/uploads/starter-uploads.zip": zippedBytes(t, map[string]string{
-				"uploads/2026/file.txt": "ok",
-			}),
-			"wordpress/others/starter-others.zip": zippedBytes(t, map[string]string{
-				"cache/acorn/.keep": "ok",
-			}),
-		},
-	)
+func TestPrepareStarterDataUsesLocalProjectBackupsWhenComplete(t *testing.T) {
+	baseDir := t.TempDir()
+	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
 
-	logger := &starterTestLogger{}
-	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo"}, logger, &starterTestRunner{})
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.gz"), "db")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-plugins.zip"), "plugins")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-uploads.zip"), "uploads")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-themes.zip"), "themes")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-others.zip"), "others")
 
 	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
 		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
 	}
 
-	if ctx.StarterData.Mode != starterDataModeEmbedded {
+	if ctx.StarterData.Mode != starterDataModeLocal {
 		t.Fatalf("unexpected starter mode: %q", ctx.StarterData.Mode)
 	}
-	for _, path := range append([]string{
-		ctx.StarterData.DatabasePath,
-	}, append(append(ctx.StarterData.PluginsPaths, ctx.StarterData.UploadsPaths...), ctx.StarterData.OthersPaths...)...) {
+	if !ctx.UseExistingProjectDir {
+		t.Fatal("expected existing project dir mode to be enabled")
+	}
+	for _, path := range append([]string{ctx.StarterData.DatabasePath}, append(append(append(ctx.StarterData.PluginsPaths, ctx.StarterData.UploadsPaths...), ctx.StarterData.OthersPaths...), ctx.StarterData.ThemePaths...)...) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)
+		}
+		if strings.HasPrefix(path, ctx.Paths.Root) {
+			t.Fatalf("expected %s to be copied to a temp dir", path)
 		}
 	}
 }
 
-func TestPrepareStarterDataFetchesOverSSHWhenEmbeddedOverrideMissing(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": nil,
-			"database|.gz":  nil,
-			"plugins|.zip":  nil,
-			"uploads|.zip":  nil,
-			"others|.zip":   nil,
-		},
-		nil,
-	)
+func TestPrepareStarterDataUsesCategorizedLocalProjectBackups(t *testing.T) {
+	baseDir := t.TempDir()
+	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
 
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "database", "backup-db.gz"), "db")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "plugins", "plugins-a.zip"), "plugins")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "uploads", "uploads-a.zip"), "uploads")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "themes", "themes-a.zip"), "themes")
+
+	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
+		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
+	}
+
+	if ctx.StarterData.Mode != starterDataModeLocal {
+		t.Fatalf("unexpected starter mode: %q", ctx.StarterData.Mode)
+	}
+}
+
+func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testing.T) {
 	logger := &starterTestLogger{}
 	runner := &starterTestRunner{captureOutput: "https://starter.tamago-dev.pl\n"}
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
@@ -125,167 +120,57 @@ func TestPrepareStarterDataFetchesOverSSHWhenEmbeddedOverrideMissing(t *testing.
 	}
 }
 
-func TestPrepareStarterDataAllowsMultiplePluginAndUploadOverrides(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": {"wordpress/database/starter.sql"},
-			"database|.gz":  nil,
-			"plugins|.zip": {
-				"wordpress/plugins/plugins-part-1.zip",
-				"wordpress/plugins/plugins-part-2.zip",
-			},
-			"uploads|.zip": {
-				"wordpress/uploads/uploads-part-1.zip",
-				"wordpress/uploads/uploads-part-2.zip",
-			},
-			"others|.zip": nil,
-		},
-		map[string][]byte{
-			"wordpress/database/starter.sql": []byte("# Home URL: https://starter.tamago-dev.pl\nSELECT 1;\n"),
-			"wordpress/plugins/plugins-part-1.zip": zippedBytes(t, map[string]string{
-				"plugins/a/a.php": "<?php\n",
-			}),
-			"wordpress/plugins/plugins-part-2.zip": zippedBytes(t, map[string]string{
-				"plugins/b/b.php": "<?php\n",
-			}),
-			"wordpress/uploads/uploads-part-1.zip": zippedBytes(t, map[string]string{
-				"uploads/2026/a.txt": "a",
-			}),
-			"wordpress/uploads/uploads-part-2.zip": zippedBytes(t, map[string]string{
-				"uploads/2026/b.txt": "b",
-			}),
-		},
-	)
+func TestPrepareStarterDataRejectsEmptyExistingProjectFolder(t *testing.T) {
+	baseDir := t.TempDir()
+	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
 
-	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
-
-	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
-		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
+	if err := os.MkdirAll(ctx.Paths.Root, 0755); err != nil {
+		t.Fatalf("failed to create root: %v", err)
 	}
 
-	if len(ctx.StarterData.PluginsPaths) != 2 {
-		t.Fatalf("expected 2 plugin archives, got %d", len(ctx.StarterData.PluginsPaths))
-	}
-	if len(ctx.StarterData.UploadsPaths) != 2 {
-		t.Fatalf("expected 2 upload archives, got %d", len(ctx.StarterData.UploadsPaths))
-	}
-}
-
-func TestPrepareStarterDataAllowsMultipleOthersOverrides(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": {"wordpress/database/starter.sql"},
-			"database|.gz":  nil,
-			"plugins|.zip":  {"wordpress/plugins/starter-plugins.zip"},
-			"uploads|.zip":  {"wordpress/uploads/starter-uploads.zip"},
-			"others|.zip": {
-				"wordpress/others/others-part-1.zip",
-				"wordpress/others/others-part-2.zip",
-			},
-		},
-		map[string][]byte{
-			"wordpress/database/starter.sql": []byte("# Home URL: https://starter.tamago-dev.pl\nSELECT 1;\n"),
-			"wordpress/plugins/starter-plugins.zip": zippedBytes(t, map[string]string{
-				"plugins/a/a.php": "<?php\n",
-			}),
-			"wordpress/uploads/starter-uploads.zip": zippedBytes(t, map[string]string{
-				"uploads/2026/file.txt": "ok",
-			}),
-			"wordpress/others/others-part-1.zip": zippedBytes(t, map[string]string{
-				"cache/acorn/.keep": "ok",
-			}),
-			"wordpress/others/others-part-2.zip": zippedBytes(t, map[string]string{
-				"mu-plugins/a.php": "<?php\n",
-			}),
-		},
-	)
-
-	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
-
-	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
-		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
-	}
-
-	if len(ctx.StarterData.OthersPaths) != 2 {
-		t.Fatalf("expected 2 others archives, got %d", len(ctx.StarterData.OthersPaths))
-	}
-}
-
-func TestPrepareStarterDataAllowsThemeOverrides(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": {"wordpress/database/starter.sql"},
-			"database|.gz":  nil,
-			"plugins|.zip":  {"wordpress/plugins/starter-plugins.zip"},
-			"uploads|.zip":  {"wordpress/uploads/starter-uploads.zip"},
-			"others|.zip":   nil,
-			"themes|.zip": {
-				"wordpress/themes/starter-themes.zip",
-				"wordpress/themes/starter-themes2.zip",
-			},
-		},
-		map[string][]byte{
-			"wordpress/database/starter.sql": []byte("# Home URL: https://starter.tamago-dev.pl\nSELECT 1;\n"),
-			"wordpress/plugins/starter-plugins.zip": zippedBytes(t, map[string]string{
-				"plugins/a/a.php": "<?php\n",
-			}),
-			"wordpress/uploads/starter-uploads.zip": zippedBytes(t, map[string]string{
-				"uploads/2026/file.txt": "ok",
-			}),
-			"wordpress/themes/starter-themes.zip": zippedBytes(t, map[string]string{
-				"themes/sage/style.css": "/* theme */",
-			}),
-			"wordpress/themes/starter-themes2.zip": zippedBytes(t, map[string]string{
-				"themes/twentytwenty/style.css": "/* theme */",
-			}),
-		},
-	)
-
-	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
-
-	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
-		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
-	}
-
-	if len(ctx.StarterData.ThemePaths) != 2 {
-		t.Fatalf("expected 2 theme archives, got %d", len(ctx.StarterData.ThemePaths))
-	}
-}
-
-func TestPrepareStarterDataRejectsPartialEmbeddedOverride(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": {"wordpress/database/starter.sql"},
-			"database|.gz":  nil,
-			"plugins|.zip":  {"wordpress/plugins/starter-plugins.zip"},
-			"uploads|.zip":  nil,
-			"others|.zip":   nil,
-		},
-		nil,
-	)
-
-	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
 	err := NewPrepareStarterDataStep().Run(ctx)
 	if err == nil {
-		t.Fatal("expected partial override error")
+		t.Fatal("expected empty existing project folder to fail")
 	}
-	if !strings.Contains(err.Error(), "incomplete embedded starter override") || !strings.Contains(err.Error(), "uploads") {
+	if !strings.Contains(err.Error(), "contains no recognizable Updraft backup files") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPrepareStarterDataRejectsPartialLocalProjectBackup(t *testing.T) {
+	baseDir := t.TempDir()
+	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
+
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.gz"), "db")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-plugins.zip"), "plugins")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-uploads.zip"), "uploads")
+
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected partial local backup error")
+	}
+	if !strings.Contains(err.Error(), "incomplete") || !strings.Contains(err.Error(), "themes") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPrepareStarterDataRejectsMultipleLocalDatabases(t *testing.T) {
+	baseDir := t.TempDir()
+	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
+
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.gz"), "db")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "database", "backup-db.sql"), "db2")
+
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected multiple database error")
+	}
+	if !strings.Contains(err.Error(), "expected exactly 1 database backup") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestPrepareStarterDataRejectsInvalidSSHTarget(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": nil,
-			"database|.gz":  nil,
-			"plugins|.zip":  nil,
-			"uploads|.zip":  nil,
-			"others|.zip":   nil,
-		},
-		nil,
-	)
-
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo", SSHTarget: "bad-target"}, &starterTestLogger{}, &starterTestRunner{})
 	err := NewPrepareStarterDataStep().Run(ctx)
 	if err == nil {
@@ -297,17 +182,6 @@ func TestPrepareStarterDataRejectsInvalidSSHTarget(t *testing.T) {
 }
 
 func TestPrepareStarterDataWarnsWhenRemoteCleanupFails(t *testing.T) {
-	restoreTemplateStubs(t,
-		map[string][]string{
-			"database|.sql": nil,
-			"database|.gz":  nil,
-			"plugins|.zip":  nil,
-			"uploads|.zip":  nil,
-			"others|.zip":   nil,
-		},
-		nil,
-	)
-
 	logger := &starterTestLogger{}
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
 		Name:      "demo",
@@ -325,26 +199,15 @@ func TestPrepareStarterDataWarnsWhenRemoteCleanupFails(t *testing.T) {
 	}
 }
 
-func restoreTemplateStubs(t *testing.T, listing map[string][]string, contents map[string][]byte) {
+func writeStarterProjectFile(t *testing.T, path string, content string) {
 	t.Helper()
 
-	originalList := starterTemplateFiles
-	originalRead := starterTemplateReader
-	starterTemplateFiles = func(category string, suffix string) ([]string, error) {
-		return append([]string(nil), listing[category+"|"+suffix]...), nil
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create parent dir for %s: %v", path, err)
 	}
-	starterTemplateReader = func(path string) ([]byte, error) {
-		content, ok := contents[path]
-		if !ok {
-			return nil, os.ErrNotExist
-		}
-		return append([]byte(nil), content...), nil
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write %s: %v", path, err)
 	}
-
-	t.Cleanup(func() {
-		starterTemplateFiles = originalList
-		starterTemplateReader = originalRead
-	})
 }
 
 func writeStarterFixture(remoteSource string, localTarget string) error {

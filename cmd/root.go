@@ -113,6 +113,6 @@ func printUsage() {
 	fmt.Println("  config   Initialize global ToBA configuration")
 	fmt.Println("  create   Create a new project skeleton")
 	fmt.Println("  doctor   Check system dependencies")
-	fmt.Println("  update   Sync template backups into embedded files")
+	fmt.Println("  update   Sync static templates into embedded files")
 	fmt.Println("  version  Print the current version")
 }

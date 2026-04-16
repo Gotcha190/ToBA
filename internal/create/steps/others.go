@@ -14,7 +14,7 @@ func (s *ImportOthersStep) Name() string {
 
 func (s *ImportOthersStep) Run(ctx *create.Context) error {
 	if len(ctx.StarterData.OthersPaths) == 0 {
-		ctx.Logger.Info("Skipping others import: no embedded others override prepared")
+		ctx.Logger.Info("Skipping others import: no local others backup prepared")
 		return nil
 	}
 
