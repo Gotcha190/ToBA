@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,7 +10,7 @@ import (
 	"github.com/gotcha190/ToBA/internal/create"
 )
 
-func cleanupFailedInstall(ctx *create.Context, input io.Reader, output io.Writer) {
+func cleanupFailedInstall(ctx *create.Context, input io.Reader) {
 	if ctx == nil || ctx.DryRun || !ctx.ProjectCreated {
 		return
 	}
@@ -20,11 +19,11 @@ func cleanupFailedInstall(ctx *create.Context, input io.Reader, output io.Writer
 		return
 	}
 
-	fmt.Fprintf(output, "Delete failed installation at %s? [y/N]: ", ctx.Paths.Root)
+	ctx.Logger.Prompt("Delete failed installation at " + ctx.Paths.Root + "? [y/N]: ")
 	reader := bufio.NewReader(input)
 	answer, err := reader.ReadString('\n')
 	if err != nil && answer == "" {
-		fmt.Fprintln(output)
+		ctx.Logger.Info("")
 		return
 	}
 
@@ -33,19 +32,19 @@ func cleanupFailedInstall(ctx *create.Context, input io.Reader, output io.Writer
 		return
 	}
 
-	if err := destroyLandoApp(ctx, output); err != nil {
-		fmt.Fprintf(output, "Failed to destroy Lando app in %s: %v\n", ctx.Paths.Root, err)
+	if err := destroyLandoApp(ctx); err != nil {
+		ctx.Logger.Warning("Failed to destroy Lando app in " + ctx.Paths.Root + ": " + err.Error())
 	}
 
 	if err := os.RemoveAll(ctx.Paths.Root); err != nil {
-		fmt.Fprintf(output, "Failed to remove %s: %v\n", ctx.Paths.Root, err)
+		ctx.Logger.Warning("Failed to remove " + ctx.Paths.Root + ": " + err.Error())
 		return
 	}
 
-	fmt.Fprintf(output, "Removed failed installation: %s\n", ctx.Paths.Root)
+	ctx.Logger.Success("Removed failed installation: " + ctx.Paths.Root)
 }
 
-func destroyLandoApp(ctx *create.Context, output io.Writer) error {
+func destroyLandoApp(ctx *create.Context) error {
 	landoFilePath := filepath.Join(ctx.Paths.Root, ".lando.yml")
 	if _, err := os.Stat(landoFilePath); os.IsNotExist(err) {
 		return nil
@@ -53,6 +52,6 @@ func destroyLandoApp(ctx *create.Context, output io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintf(output, "Destroying Lando app in %s\n", ctx.Paths.Root)
+	ctx.Logger.Info("Destroying Lando app in " + ctx.Paths.Root)
 	return ctx.Runner.Run(ctx.Paths.Root, "lando", "destroy", "-y")
 }

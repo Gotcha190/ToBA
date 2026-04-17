@@ -9,6 +9,8 @@ type recordingLogger struct {
 	steps     []string
 	successes []string
 	errors    []string
+	prompts   []string
+	coded     []string
 }
 
 func (l *recordingLogger) Step(msg string) {
@@ -16,6 +18,10 @@ func (l *recordingLogger) Step(msg string) {
 }
 
 func (l *recordingLogger) Info(msg string) {}
+
+func (l *recordingLogger) Prompt(msg string) {
+	l.prompts = append(l.prompts, msg)
+}
 
 func (l *recordingLogger) Warning(msg string) {}
 
@@ -25,6 +31,10 @@ func (l *recordingLogger) Success(msg string) {
 
 func (l *recordingLogger) Error(msg string) {
 	l.errors = append(l.errors, msg)
+}
+
+func (l *recordingLogger) ErrorCode(code string, msg string) {
+	l.coded = append(l.coded, code+": "+msg)
 }
 
 type pipelineTestStep struct {
@@ -72,5 +82,27 @@ func TestPipelineStopsOnFirstError(t *testing.T) {
 	}
 	if len(logger.errors) != 1 {
 		t.Fatalf("expected a single error log, got %v", logger.errors)
+	}
+}
+
+func TestPipelineLogsCodedErrors(t *testing.T) {
+	expectedErr := errors.New("boom")
+	logger := &recordingLogger{}
+
+	pipeline := Pipeline{
+		Steps: []Step{
+			pipelineTestStep{name: "step-1", err: NewCodedError("FAIL_CODE", "failed to do thing", expectedErr), hit: &[]string{}},
+		},
+	}
+
+	err := pipeline.Run(&Context{Logger: logger})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected wrapped error, got %v", err)
+	}
+	if len(logger.coded) != 1 {
+		t.Fatalf("expected a single coded error log, got %v", logger.coded)
+	}
+	if len(logger.errors) != 0 {
+		t.Fatalf("expected no plain error logs, got %v", logger.errors)
 	}
 }

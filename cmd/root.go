@@ -30,11 +30,6 @@ func Execute() {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			os.Exit(1)
 		}
-	case "update":
-		if err := runUpdate(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			os.Exit(1)
-		}
 	case "version":
 		cli.RunVersion()
 	default:
@@ -89,23 +84,6 @@ func runConfig(args []string) error {
 	return cli.RunConfigInit()
 }
 
-func runUpdate(args []string) error {
-	fs := flag.NewFlagSet("update", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba update")
-	}
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if len(fs.Args()) > 0 {
-		return fmt.Errorf("unexpected arguments: %v", fs.Args())
-	}
-
-	return cli.RunUpdate()
-}
-
 func printUsage() {
 	fmt.Println("Usage: toba <command>")
 	fmt.Println()
@@ -113,6 +91,5 @@ func printUsage() {
 	fmt.Println("  config   Initialize global ToBA configuration")
 	fmt.Println("  create   Create a new project skeleton")
 	fmt.Println("  doctor   Check system dependencies")
-	fmt.Println("  update   Sync static templates into embedded files")
 	fmt.Println("  version  Print the current version")
 }

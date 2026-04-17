@@ -28,12 +28,14 @@ func runCreateWithRunner(opts CreateOptions, runner create.CommandRunner) error 
 }
 
 func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.Reader, output io.Writer) error {
+	logger := create.NewConsoleLogger(output)
+
 	config, envPath, _, err := create.ResolveEnvConfig()
 	if err != nil {
 		return err
 	}
 	if envPath != "" {
-		fmt.Fprintf(output, "Using config from %s\n", envPath)
+		logger.Info("Using config from " + envPath)
 	}
 
 	if opts.Name != "" {
@@ -69,7 +71,7 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 		return err
 	}
 
-	ctx := create.NewContext(cwd, config, create.ConsoleLogger{}, runner)
+	ctx := create.NewContext(cwd, config, logger, runner)
 	defer func() {
 		if ctx.StarterData.TempDir == "" {
 			return
@@ -104,7 +106,7 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 
 	err = pipeline.Run(ctx)
 	if err != nil {
-		cleanupFailedInstall(ctx, input, output)
+		cleanupFailedInstall(ctx, input)
 		return err
 	}
 

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/gotcha190/ToBA/internal/create"
@@ -18,6 +17,6 @@ func RunConfigInit() error {
 		return err
 	}
 
-	fmt.Printf("Copied config from %s to %s\n", sourcePath, targetPath)
+	create.NewConsoleLogger(os.Stdout).Info("Copied config from " + sourcePath + " to " + targetPath)
 	return nil
 }

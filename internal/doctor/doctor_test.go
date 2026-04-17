@@ -23,3 +23,16 @@ func TestFullWorkflowChecksIncludeSSHAndZipTools(t *testing.T) {
 		}
 	}
 }
+
+func TestRunChecksReturnsResultPerCheck(t *testing.T) {
+	results := RunChecks([]Check{{Name: "Missing", Binary: "binary-that-does-not-exist-toba"}})
+	if len(results) != 1 {
+		t.Fatalf("expected a single result, got %d", len(results))
+	}
+	if results[0].Check.Binary != "binary-that-does-not-exist-toba" {
+		t.Fatalf("unexpected result: %#v", results[0])
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected missing binary error")
+	}
+}

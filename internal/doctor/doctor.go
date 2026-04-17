@@ -10,6 +10,11 @@ type Check struct {
 	Binary string
 }
 
+type Result struct {
+	Check Check
+	Err   error
+}
+
 func FullWorkflowChecks() []Check {
 	return []Check{
 		{Name: "Git", Binary: "git"},
@@ -24,35 +29,17 @@ func FullWorkflowChecks() []Check {
 	}
 }
 
-func RunCheck(check Check) error {
-	return checkBinary(check.Binary)
+func RunChecks(checks []Check) []Result {
+	results := make([]Result, 0, len(checks))
+	for _, check := range checks {
+		results = append(results, Result{
+			Check: check,
+			Err:   checkBinary(check.Binary),
+		})
+	}
+	return results
 }
 
-func CheckGit() error {
-	return checkBinary("git")
-}
-
-func CheckNode() error {
-	return checkBinary("node")
-}
-
-func CheckNpm() error {
-	return checkBinary("npm")
-}
-
-func CheckComposer() error {
-	return checkBinary("composer")
-}
-
-func CheckLando() error {
-	return checkBinary("lando")
-}
-
-func CheckDocker() error {
-	return checkBinary("docker")
-}
-
-// checkBinary sprawdza czy dany program jest w PATH
 func checkBinary(name string) error {
 	_, err := exec.LookPath(name)
 	if err != nil {

@@ -13,7 +13,7 @@ func RunDoctor() error {
 		return err
 	}
 
-	ctx := create.NewContext(cwd, create.ProjectConfig{}, create.ConsoleLogger{}, create.NoopRunner{})
+	ctx := create.NewContext(cwd, create.ProjectConfig{}, create.NewConsoleLogger(os.Stdout), create.NoopRunner{})
 
 	pipeline := create.Pipeline{
 		Steps: []create.Step{

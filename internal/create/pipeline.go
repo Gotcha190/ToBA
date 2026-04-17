@@ -1,5 +1,7 @@
 package create
 
+import "errors"
+
 type Step interface {
 	Name() string
 	Run(ctx *Context) error
@@ -14,7 +16,12 @@ func (p *Pipeline) Run(ctx *Context) error {
 		ctx.Logger.Step(step.Name())
 
 		if err := step.Run(ctx); err != nil {
-			ctx.Logger.Error(step.Name() + ": " + err.Error())
+			var coded codeCarrier
+			if errors.As(err, &coded) {
+				ctx.Logger.ErrorCode(coded.Code(), step.Name()+": "+err.Error())
+			} else {
+				ctx.Logger.Error(step.Name() + ": " + err.Error())
+			}
 			return err
 		}
 

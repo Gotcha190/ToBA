@@ -24,14 +24,14 @@ func (s *DoctorStep) Run(ctx *create.Context) error {
 
 	var missing []string
 
-	for _, check := range doctor.FullWorkflowChecks() {
-		ctx.Logger.Info("Checking " + check.Name)
-		if err := doctor.RunCheck(check); err != nil {
-			ctx.Logger.Warning(fmt.Sprintf("%s not installed", check.Name))
-			missing = append(missing, check.Binary)
+	for _, result := range doctor.RunChecks(doctor.FullWorkflowChecks()) {
+		ctx.Logger.Info("Checking " + result.Check.Name)
+		if result.Err != nil {
+			ctx.Logger.Warning(fmt.Sprintf("%s not installed", result.Check.Name))
+			missing = append(missing, result.Check.Binary)
 			continue
 		}
-		ctx.Logger.Success(check.Name + " installed")
+		ctx.Logger.Success(result.Check.Name + " installed")
 	}
 
 	if len(missing) > 0 {
