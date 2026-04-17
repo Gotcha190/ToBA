@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/project"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/project"
 )
 
 func restoreLocalZip(ctx *create.Context, archivePath string, destination string, label string) error {

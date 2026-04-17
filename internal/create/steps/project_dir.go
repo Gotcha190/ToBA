@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/project"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/project"
 )
 
 type ProjectDirStep struct{}

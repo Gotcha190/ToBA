@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"text/template"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/templates"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/templates"
 )
 
 func RenderConfig(config create.ProjectConfig) ([]byte, error) {

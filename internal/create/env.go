@@ -2,13 +2,18 @@ package create
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gotcha190/toba/internal/templates"
 )
 
 const envFileName = ".env"
+const envExampleFileName = ".env.example"
 const globalConfigDirName = "toba"
 
 func LoadEnvConfig() (ProjectConfig, error) {
@@ -34,7 +39,6 @@ func ResolveEnvConfig() (ProjectConfig, string, bool, error) {
 	}
 
 	return ProjectConfig{
-		Name:        values["TOBA_PROJECT_NAME"],
 		PHPVersion:  values["TOBA_PHP_VERSION"],
 		Database:    values["TOBA_DATABASE"],
 		StarterRepo: values["TOBA_STARTER_REPO"],
@@ -51,29 +55,76 @@ func GlobalEnvPath() (string, error) {
 	return filepath.Join(configDir, globalConfigDirName, envFileName), nil
 }
 
-func CopyLocalEnvToGlobal(sourceDir string) (string, string, error) {
-	sourcePath := filepath.Join(sourceDir, envFileName)
-	content, err := os.ReadFile(sourcePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", "", fmt.Errorf("no .env found in %s; run this command from the ToBA repository root", sourceDir)
-		}
-		return "", "", err
-	}
-
+func ResolveGlobalEnvInitialization(sourceDir string) ([]byte, string, string, bool, error) {
 	targetPath, err := GlobalEnvPath()
 	if err != nil {
-		return "", "", err
+		return nil, "", "", false, err
 	}
 
+	content, sourcePath, fromTemplate, err := resolveGlobalEnvSource(sourceDir)
+	if err != nil {
+		return nil, "", "", false, err
+	}
+
+	return content, sourcePath, targetPath, fromTemplate, nil
+}
+
+func WriteGlobalEnv(targetPath string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-		return "", "", err
+		return wrapGlobalEnvPermissionError(targetPath, err)
 	}
 	if err := os.WriteFile(targetPath, content, 0644); err != nil {
-		return "", "", err
+		return wrapGlobalEnvPermissionError(targetPath, err)
 	}
 
-	return sourcePath, targetPath, nil
+	return nil
+}
+
+func resolveGlobalEnvSource(sourceDir string) ([]byte, string, bool, error) {
+	if isTobaRepositoryRoot(sourceDir) {
+		for _, fileName := range []string{envFileName, envExampleFileName} {
+			sourcePath := filepath.Join(sourceDir, fileName)
+			content, err := os.ReadFile(sourcePath)
+			if err == nil {
+				return content, sourcePath, fileName == envExampleFileName, nil
+			}
+			if !os.IsNotExist(err) {
+				return nil, "", false, err
+			}
+		}
+	}
+
+	content, err := templates.Read("config/.env.example")
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	return content, "embedded:.env.example", true, nil
+}
+
+func isTobaRepositoryRoot(dir string) bool {
+	goModPath := filepath.Join(dir, "go.mod")
+	goModContent, err := os.ReadFile(goModPath)
+	if err != nil {
+		return false
+	}
+	if !strings.Contains(string(goModContent), "github.com/gotcha190/toba") {
+		return false
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "cmd", "root.go")); err != nil {
+		return false
+	}
+
+	return true
+}
+
+func wrapGlobalEnvPermissionError(targetPath string, err error) error {
+	if errors.Is(err, fs.ErrPermission) {
+		return fmt.Errorf("cannot write global config at %s: permission denied", targetPath)
+	}
+
+	return err
 }
 
 func loadEnvFile(path string) (map[string]string, error) {

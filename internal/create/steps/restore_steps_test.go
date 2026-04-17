@@ -4,12 +4,11 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 type restoreTestRunner struct{}
@@ -105,31 +104,11 @@ func TestClearImportedCachesStepRemovesCacheDirAndRunsFlushCommands(t *testing.T
 	if _, err := os.Stat(filepath.Join(ctx.Paths.WPContent, "cache")); !os.IsNotExist(err) {
 		t.Fatalf("expected cache dir to be removed, got err=%v", err)
 	}
-	if len(runner.commands) != 2 {
-		t.Fatalf("expected 2 commands, got %d", len(runner.commands))
+	if len(runner.commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(runner.commands))
 	}
 	if got := runner.commands[0].args; len(got) != 3 || got[0] != "wp" || got[1] != "cache" || got[2] != "flush" {
 		t.Fatalf("unexpected wp cache flush args: %#v", got)
-	}
-	if got := runner.commands[1].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "optimize:clear" {
-		t.Fatalf("unexpected wp acorn optimize:clear args: %#v", got)
-	}
-}
-
-func TestClearImportedCachesStepWarnsWhenAcornClearFails(t *testing.T) {
-	logger := &starterTestLogger{}
-	runner := &recordingRunner{runErrByCommand: map[string]error{
-		"lando wp acorn optimize:clear": errors.New("missing acorn"),
-	}}
-	ctx := newRestoreTestContext(t)
-	ctx.Runner = runner
-	ctx.Logger = logger
-
-	if err := NewClearImportedCachesStep().Run(ctx); err != nil {
-		t.Fatalf("ClearImportedCachesStep returned error: %v", err)
-	}
-	if len(logger.warnings) == 0 {
-		t.Fatal("expected warning when Acorn clear fails")
 	}
 }
 

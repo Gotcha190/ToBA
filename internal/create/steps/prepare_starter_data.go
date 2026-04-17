@@ -3,8 +3,9 @@ package steps
 import (
 	"fmt"
 	"os"
+	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 const (
@@ -32,6 +33,13 @@ func (s *PrepareStarterDataStep) Run(ctx *create.Context) error {
 	case !os.IsNotExist(err):
 		return err
 	default:
+		if strings.TrimSpace(ctx.Config.SSHTarget) == "" {
+			globalEnvPath, pathErr := create.GlobalEnvPath()
+			if pathErr != nil {
+				return fmt.Errorf("SSH starter source is not configured; set TOBA_SSH_TARGET in the global config or pass --ssh-target")
+			}
+			return fmt.Errorf("SSH starter source is not configured; fill in TOBA_SSH_TARGET in %s or pass --ssh-target", globalEnvPath)
+		}
 		return prepareRemoteStarterData(ctx)
 	}
 }

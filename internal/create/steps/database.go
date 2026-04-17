@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/project"
-	"github.com/gotcha190/ToBA/internal/wordpress"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/project"
+	"github.com/gotcha190/toba/internal/wordpress"
 )
 
 type ImportDatabaseStep struct{}

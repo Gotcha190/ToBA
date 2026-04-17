@@ -6,14 +6,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/create/steps"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/create/steps"
+	"github.com/gotcha190/toba/internal/wordpress"
 )
 
 type CreateOptions struct {
 	Name        string
 	PHPVersion  string
-	Domain      string
 	StarterRepo string
 	SSHTarget   string
 	DryRun      bool
@@ -44,9 +44,6 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	if opts.PHPVersion != "" {
 		config.PHPVersion = opts.PHPVersion
 	}
-	if opts.Domain != "" {
-		config.Domain = opts.Domain
-	}
 	if opts.StarterRepo != "" {
 		config.StarterRepo = opts.StarterRepo
 	}
@@ -56,14 +53,7 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	config.DryRun = opts.DryRun
 
 	if strings.TrimSpace(config.Name) == "" {
-		if envPath != "" {
-			return fmt.Errorf("project name cannot be empty; set TOBA_PROJECT_NAME in %s or pass project name as argument", envPath)
-		}
-		globalPath, pathErr := create.GlobalEnvPath()
-		if pathErr != nil {
-			return fmt.Errorf("project name cannot be empty")
-		}
-		return fmt.Errorf("project name cannot be empty; global config not found at %s. Run 'ToBA config init' in the ToBA repository first or pass project name as argument", globalPath)
+		return fmt.Errorf("project name is required; pass it as argument: toba create <project-name>")
 	}
 
 	cwd, err := os.Getwd()
@@ -95,10 +85,10 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 			steps.NewImportUploadsStep(),
 			steps.NewImportOthersStep(),
 			steps.NewImportDatabaseStep(),
-			steps.NewClearImportedCachesStep(),
 			steps.NewResetAdminPasswordStep(),
 			steps.NewActivateThemeStep(),
 			steps.NewGenerateAcornKeyStep(),
+			steps.NewClearImportedCachesStep(),
 			steps.NewFlushRewriteRulesStep(),
 			steps.NewRefreshThemeCachesStep(),
 		},
@@ -109,6 +99,14 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 		cleanupFailedInstall(ctx, input)
 		return err
 	}
+
+	siteURL, err := wordpress.LocalHTTPSURL(ctx.Config.Domain)
+	if err != nil {
+		logger.Warning("Project created, but could not determine site URL: " + err.Error())
+		return nil
+	}
+
+	logger.Success("Project ready: " + siteURL)
 
 	return nil
 }

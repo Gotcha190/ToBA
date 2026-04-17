@@ -1,8 +1,8 @@
 package steps
 
 import (
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/lando"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/lando"
 )
 
 type StartLandoStep struct{}

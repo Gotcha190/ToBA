@@ -5,7 +5,7 @@ import (
 	"path"
 )
 
-//go:embed files/config/php.ini files/lando/.lando.yml files/wp-cli.yml
+//go:embed files/config/.env.example files/config/php.ini files/lando/.lando.yml files/wp-cli.yml
 var files embed.FS
 
 func Read(name string) ([]byte, error) {

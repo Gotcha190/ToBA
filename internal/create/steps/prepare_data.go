@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/gotcha190/ToBA/internal/project"
+	"github.com/gotcha190/toba/internal/project"
 )
 
 func makeStarterTempDir() (string, error) {

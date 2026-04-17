@@ -1,7 +1,7 @@
 package main
 
-import "github.com/gotcha190/ToBA/cmd"
+import "github.com/gotcha190/toba/cmd"
 
 func main() {
-    cmd.Execute()
+	cmd.Execute()
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 const testStarterRepo = "git@example.com:company/starter.git"
@@ -20,10 +20,13 @@ type recordedCommand struct {
 }
 
 type fakeRunner struct {
-	commands []recordedCommand
-	runErr   error
-	homeURL  string
-	failCmd  string
+	commands            []recordedCommand
+	runErr              error
+	runErrByCommand     map[string]error
+	homeURL             string
+	failCmd             string
+	captureErr          error
+	captureErrByCommand map[string]error
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
@@ -42,6 +45,11 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 			return err
 		}
 	}
+	if r.runErrByCommand != nil {
+		if err, ok := r.runErrByCommand[cmd+" "+strings.Join(args, " ")]; ok {
+			return err
+		}
+	}
 	if r.runErr != nil && (r.failCmd == "" || r.failCmd == cmd) {
 		return r.runErr
 	}
@@ -54,6 +62,14 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	if r.captureErrByCommand != nil {
+		if err, ok := r.captureErrByCommand[cmd+" "+strings.Join(args, " ")]; ok {
+			return "", err
+		}
+	}
+	if r.captureErr != nil {
+		return "", r.captureErr
+	}
 	if r.runErr != nil && (r.failCmd == "" || r.failCmd == cmd) {
 		return "", r.runErr
 	}
@@ -80,7 +96,6 @@ func TestRunCreateCreatesProjectSkeletonFromSSHStarter(t *testing.T) {
 	err := runCreateWithRunner(CreateOptions{
 		Name:        "demo",
 		PHPVersion:  "8.4",
-		Domain:      "demo.lndo.site",
 		StarterRepo: testStarterRepo,
 		SSHTarget:   "user@192.168.0.1 -p 22",
 	}, runner)
@@ -258,7 +273,6 @@ func TestRunCreateUsesEnvConfig(t *testing.T) {
 	}
 
 	env := "" +
-		"TOBA_PROJECT_NAME=demo\n" +
 		"TOBA_PHP_VERSION=8.4\n" +
 		"TOBA_DOMAIN=stale-from-env.lndo.site\n" +
 		"TOBA_STARTER_REPO=" + testStarterRepo + "\n" +
@@ -270,7 +284,7 @@ func TestRunCreateUsesEnvConfig(t *testing.T) {
 		t.Fatalf("failed to write global env file: %v", err)
 	}
 
-	if err := runCreateWithRunner(CreateOptions{}, runner); err != nil {
+	if err := runCreateWithRunner(CreateOptions{Name: "demo"}, runner); err != nil {
 		t.Fatalf("runCreateWithRunner returned error: %v", err)
 	}
 
@@ -304,7 +318,6 @@ func TestRunCreateWritesConfigSourceToProvidedOutput(t *testing.T) {
 	}
 
 	env := "" +
-		"TOBA_PROJECT_NAME=demo\n" +
 		"TOBA_PHP_VERSION=8.4\n" +
 		"TOBA_STARTER_REPO=" + testStarterRepo + "\n" +
 		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n"
@@ -315,13 +328,112 @@ func TestRunCreateWritesConfigSourceToProvidedOutput(t *testing.T) {
 		t.Fatalf("failed to write global env file: %v", err)
 	}
 
-	if err := runCreateWithIO(CreateOptions{}, runner, strings.NewReader("n\n"), output); err != nil {
+	if err := runCreateWithIO(CreateOptions{Name: "demo"}, runner, strings.NewReader("n\n"), output); err != nil {
 		t.Fatalf("runCreateWithIO returned error: %v", err)
 	}
 
 	if !strings.Contains(output.String(), "Using config from "+globalEnvPath) {
 		t.Fatalf("expected config source log, got %q", output.String())
 	}
+}
+
+func TestRunCreateNormalizesNameAndPrintsFinalSiteURL(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{}
+	output := &strings.Builder{}
+
+	err := runCreateWithIO(
+		CreateOptions{
+			Name:        "Test",
+			StarterRepo: testStarterRepo,
+			SSHTarget:   "user@192.168.0.1 -p 22",
+		},
+		runner,
+		strings.NewReader("n\n"),
+		output,
+	)
+	if err != nil {
+		t.Fatalf("runCreateWithIO returned error: %v", err)
+	}
+
+	paths := create.NewProjectPaths(baseDir, "test")
+	if _, statErr := os.Stat(paths.Root); statErr != nil {
+		t.Fatalf("expected normalized project root %s to exist: %v", paths.Root, statErr)
+	}
+
+	assertHasCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "test"})
+	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "test"})
+
+	var installURL string
+	for _, command := range runner.commands {
+		if command.cmd != "lando" || len(command.args) < 4 {
+			continue
+		}
+		if command.args[0] == "wp" && command.args[1] == "core" && command.args[2] == "install" {
+			installURL = command.args[3]
+			break
+		}
+	}
+	if installURL != "--url=test.lndo.site" {
+		t.Fatalf("expected normalized install url, got %q", installURL)
+	}
+
+	if !strings.Contains(output.String(), "Project ready: https://test.lndo.site") {
+		t.Fatalf("expected final site URL in output, got %q", output.String())
+	}
+}
+
+func TestRunCreateDoesNotRunAcornOptimizeClearForSSHStarter(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{}
+
+	err := runCreateWithRunner(CreateOptions{
+		Name:        "demo",
+		StarterRepo: testStarterRepo,
+		SSHTarget:   "user@192.168.0.1 -p 22",
+	}, runner)
+	if err != nil {
+		t.Fatalf("runCreateWithRunner returned error: %v", err)
+	}
+
+	assertNoCommand(t, runner.commands, "lando", []string{"wp", "acorn", "optimize:clear"})
+}
+
+func TestRunCreateDoesNotRunAcornOptimizeClearForLocalBackup(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	projectRoot := filepath.Join(baseDir, "demo")
+	writeCreateTestFile(t, filepath.Join(projectRoot, "backup-demo-db.sql"), "# Home URL: https://local-starter.test\nSELECT 1;\n")
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-plugins.zip"), map[string]string{
+		"plugins/acf/acf.php": "<?php\n",
+	}); err != nil {
+		t.Fatalf("failed to write plugins zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-uploads.zip"), map[string]string{
+		"uploads/2026/example.txt": "uploaded",
+	}); err != nil {
+		t.Fatalf("failed to write uploads zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-themes.zip"), map[string]string{
+		"themes/toet/style.css": "/* theme */",
+	}); err != nil {
+		t.Fatalf("failed to write themes zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-others.zip"), map[string]string{
+		"mu-plugins/local.php": "<?php\n",
+	}); err != nil {
+		t.Fatalf("failed to write others zip: %v", err)
+	}
+
+	runner := &fakeRunner{}
+	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, runner); err != nil {
+		t.Fatalf("expected local project backup flow to succeed, got: %v", err)
+	}
+
+	assertNoCommand(t, runner.commands, "lando", []string{"wp", "acorn", "optimize:clear"})
 }
 
 func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
@@ -332,7 +444,7 @@ func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
 	output := &strings.Builder{}
 	err := runCreateWithIO(
 		CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"},
-		&fakeRunner{runErr: fmt.Errorf("lando failed"), failCmd: "lando"},
+		&fakeRunner{runErrByCommand: map[string]error{"lando start": fmt.Errorf("lando failed")}},
 		input,
 		output,
 	)
@@ -349,6 +461,37 @@ func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
 	}
 }
 
+func TestRunCreateKeepsProjectDirWhenLandoDestroyFails(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	input := strings.NewReader("y\n")
+	output := &strings.Builder{}
+	err := runCreateWithIO(
+		CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"},
+		&fakeRunner{runErrByCommand: map[string]error{
+			"lando start":      fmt.Errorf("lando failed"),
+			"lando destroy -y": fmt.Errorf("destroy failed"),
+		}},
+		input,
+		output,
+	)
+	if err == nil {
+		t.Fatal("expected create to fail")
+	}
+
+	projectRoot := filepath.Join(baseDir, "demo")
+	if _, statErr := os.Stat(projectRoot); statErr != nil {
+		t.Fatalf("expected project root to remain after destroy failure, got err=%v", statErr)
+	}
+	if !strings.Contains(output.String(), "Failed to destroy Lando app in "+projectRoot) {
+		t.Fatalf("expected destroy error, got: %s", output.String())
+	}
+	if !strings.Contains(output.String(), "Keeping project directory because removing it now could make manual Lando cleanup harder") {
+		t.Fatalf("expected keep-directory error, got: %s", output.String())
+	}
+}
+
 func TestRunCreateFailsWithoutGlobalConfig(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
@@ -357,7 +500,57 @@ func TestRunCreateFailsWithoutGlobalConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing global config error")
 	}
-	if !strings.Contains(err.Error(), "ToBA config init") {
+	if !strings.Contains(err.Error(), "toba create <project-name>") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunCreateFailsWhenStarterRepoIsMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
+	if err == nil {
+		t.Fatal("expected missing starter repo error")
+	}
+	if !strings.Contains(err.Error(), "TOBA_STARTER_REPO") || !strings.Contains(err.Error(), "--starter-repo") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunCreateFailsWhenSSHTargetIsMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	globalEnvPath, err := create.GlobalEnvPath()
+	if err != nil {
+		t.Fatalf("GlobalEnvPath returned error: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(globalEnvPath, []byte("TOBA_STARTER_REPO="+testStarterRepo+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write global env file: %v", err)
+	}
+
+	err = runCreateWithRunner(CreateOptions{Name: "demo"}, &fakeRunner{})
+	if err == nil {
+		t.Fatal("expected missing SSH target error")
+	}
+	if !strings.Contains(err.Error(), "TOBA_SSH_TARGET") || !strings.Contains(err.Error(), "--ssh-target") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunCreateFailsForProjectNameWithSpaces(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	err := runCreateWithRunner(CreateOptions{Name: "demo project", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
+	if err == nil {
+		t.Fatal("expected project name validation error")
+	}
+	if !strings.Contains(err.Error(), "project name cannot contain spaces") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

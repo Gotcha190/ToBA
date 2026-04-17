@@ -20,7 +20,6 @@ func FullWorkflowChecks() []Check {
 		{Name: "Git", Binary: "git"},
 		{Name: "Node", Binary: "node"},
 		{Name: "NPM", Binary: "npm"},
-		{Name: "Composer", Binary: "composer"},
 		{Name: "Lando", Binary: "lando"},
 		{Name: "Docker", Binary: "docker"},
 		{Name: "SSH", Binary: "ssh"},
