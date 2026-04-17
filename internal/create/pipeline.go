@@ -11,6 +11,18 @@ type Pipeline struct {
 	Steps []Step
 }
 
+// Run executes each pipeline step in order and logs coded errors with their
+// explicit error codes when available.
+//
+// Parameters:
+// - ctx: shared workflow context passed to every pipeline step
+//
+// Returns:
+// - an error as soon as the first step fails
+//
+// Side effects:
+// - writes step progress and errors through the configured logger
+// - invokes each step sequentially
 func (p *Pipeline) Run(ctx *Context) error {
 	for _, step := range p.Steps {
 		ctx.Logger.Step(step.Name())

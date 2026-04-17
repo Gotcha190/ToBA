@@ -18,6 +18,18 @@ type ProjectConfig struct {
 	DryRun      bool
 }
 
+// Normalize validates the project name and fills the derived defaults required
+// by the create workflow.
+//
+// Parameters:
+// - none; the receiver fields are normalized in place
+//
+// Returns:
+// - an error when the project name is empty or contains unsupported characters
+//
+// Side effects:
+// - lowercases and trims the project name
+// - sets default PHP version, domain, and database name on the receiver
 func (c *ProjectConfig) Normalize() error {
 	c.Name = strings.ToLower(strings.TrimSpace(c.Name))
 	if c.Name == "" {

@@ -25,6 +25,21 @@ const (
 	defaultAdminID       = "1"
 )
 
+// Install downloads WordPress, creates wp-config.php, and performs the initial
+// site installation in the local Lando project.
+//
+// Parameters:
+// - runner: command runner used to launch Lando-backed WP-CLI commands
+// - projectDir: local project root
+// - config: normalized project configuration used for the installation values
+//
+// Returns:
+// - an error when any WordPress bootstrap command fails
+//
+// Side effects:
+// - downloads WordPress core
+// - creates wp-config.php
+// - performs the initial WordPress install
 func Install(runner create.CommandRunner, projectDir string, config create.ProjectConfig) error {
 	if err := runner.Run(projectDir, "lando", "wp", "core", "download", "--locale="+defaultLocale); err != nil {
 		return fmt.Errorf("wordpress download failed: %w", err)
@@ -63,6 +78,14 @@ func Install(runner create.CommandRunner, projectDir string, config create.Proje
 	return nil
 }
 
+// ProjectTitle converts a project slug into a human-readable WordPress site
+// title.
+//
+// Parameters:
+// - name: project slug or identifier
+//
+// Returns:
+// - the formatted site title
 func ProjectTitle(name string) string {
 	normalized := strings.NewReplacer("-", " ", "_", " ").Replace(strings.TrimSpace(name))
 	words := strings.Fields(normalized)
@@ -79,6 +102,19 @@ func ProjectTitle(name string) string {
 	return strings.Join(words, " ")
 }
 
+// ImportDatabase runs `lando db-import` for sqlPath, converting absolute paths
+// to project-relative paths when needed.
+//
+// Parameters:
+// - runner: command runner used to launch the import command
+// - projectDir: local project root
+// - sqlPath: SQL file path to import
+//
+// Returns:
+// - an error when path normalization or the import command fails
+//
+// Side effects:
+// - runs `lando db-import` in the project directory
 func ImportDatabase(runner create.CommandRunner, projectDir string, sqlPath string) error {
 	importPath := sqlPath
 	if filepath.IsAbs(sqlPath) {
@@ -96,6 +132,14 @@ func ImportDatabase(runner create.CommandRunner, projectDir string, sqlPath stri
 	return nil
 }
 
+// BackupSourceURL reads the original site URL from SQL backup metadata.
+//
+// Parameters:
+// - sqlPath: SQL dump path to inspect
+//
+// Returns:
+// - the validated source URL found in the backup comments
+// - an error when the file cannot be read or the URL metadata is missing/invalid
 func BackupSourceURL(sqlPath string) (string, error) {
 	file, err := os.Open(sqlPath)
 	if err != nil {
@@ -124,6 +168,19 @@ func BackupSourceURL(sqlPath string) (string, error) {
 	return validateURL(backupURL)
 }
 
+// SearchReplace rewrites WordPress database URLs from sourceURL to targetURL.
+//
+// Parameters:
+// - runner: command runner used to launch WP-CLI
+// - projectDir: local project root
+// - sourceURL: original site URL present in the imported database
+// - targetURL: replacement local site URL
+//
+// Returns:
+// - an error when the search-replace command fails
+//
+// Side effects:
+// - runs `lando wp search-replace` in the project directory
 func SearchReplace(runner create.CommandRunner, projectDir string, sourceURL string, targetURL string) error {
 	if err := runner.Run(
 		projectDir,
@@ -141,6 +198,17 @@ func SearchReplace(runner create.CommandRunner, projectDir string, sourceURL str
 	return nil
 }
 
+// ResetAdminPassword resets the default local WordPress admin password.
+//
+// Parameters:
+// - runner: command runner used to launch WP-CLI
+// - projectDir: local project root
+//
+// Returns:
+// - an error when the password reset command fails
+//
+// Side effects:
+// - runs `lando wp user update 1 --user_pass=...`
 func ResetAdminPassword(runner create.CommandRunner, projectDir string) error {
 	if err := runner.Run(
 		projectDir,
@@ -157,6 +225,18 @@ func ResetAdminPassword(runner create.CommandRunner, projectDir string) error {
 	return nil
 }
 
+// ActivateTheme activates themeName in the local WordPress installation.
+//
+// Parameters:
+// - runner: command runner used to launch WP-CLI
+// - projectDir: local project root
+// - themeName: WordPress theme slug to activate
+//
+// Returns:
+// - an error when the theme activation command fails
+//
+// Side effects:
+// - runs `lando wp theme activate ...`
 func ActivateTheme(runner create.CommandRunner, projectDir string, themeName string) error {
 	if err := runner.Run(projectDir, "lando", "wp", "theme", "activate", themeName); err != nil {
 		return fmt.Errorf("theme activation failed: %w", err)
@@ -165,6 +245,19 @@ func ActivateTheme(runner create.CommandRunner, projectDir string, themeName str
 	return nil
 }
 
+// DetectImportedThemeSlug reads the active theme slug from the imported
+// database by checking the stylesheet and template options.
+//
+// Parameters:
+// - runner: command runner used to query WP-CLI options
+// - projectDir: local project root
+//
+// Returns:
+// - the detected theme slug
+// - an error when both option lookups fail or return empty values
+//
+// Side effects:
+// - runs `lando wp option get stylesheet` and, if needed, `template`
 func DetectImportedThemeSlug(runner create.CommandRunner, projectDir string) (string, error) {
 	for _, option := range []string{"stylesheet", "template"} {
 		value, err := runner.CaptureOutput(projectDir, "lando", "wp", "option", "get", option)
@@ -181,6 +274,17 @@ func DetectImportedThemeSlug(runner create.CommandRunner, projectDir string) (st
 	return "", fmt.Errorf("theme detection failed: imported database does not expose stylesheet/template; make sure the restored database points to the imported theme and activate the theme manually if needed")
 }
 
+// FlushRewriteRules runs the hard rewrite flush command in the local project.
+//
+// Parameters:
+// - runner: command runner used to launch WP-CLI
+// - projectDir: local project root
+//
+// Returns:
+// - an error when the rewrite flush command fails
+//
+// Side effects:
+// - runs `lando wp rewrite flush --hard`
 func FlushRewriteRules(runner create.CommandRunner, projectDir string) error {
 	if err := runner.Run(projectDir, "lando", "wp", "rewrite", "flush", "--hard"); err != nil {
 		return fmt.Errorf("rewrite flush failed: %w", err)
@@ -189,6 +293,17 @@ func FlushRewriteRules(runner create.CommandRunner, projectDir string) error {
 	return nil
 }
 
+// RefreshThemeCaches runs the Acorn commands used to rebuild theme caches.
+//
+// Parameters:
+// - runner: command runner used to launch Acorn commands
+// - projectDir: local project root
+//
+// Returns:
+// - an error when any cache maintenance command fails
+//
+// Side effects:
+// - runs several `lando wp acorn ...` commands in sequence
 func RefreshThemeCaches(runner create.CommandRunner, projectDir string) error {
 	for _, args := range [][]string{
 		{"wp", "acorn", "optimize"},
@@ -203,6 +318,14 @@ func RefreshThemeCaches(runner create.CommandRunner, projectDir string) error {
 	return nil
 }
 
+// LocalHTTPSURL normalizes a domain or URL string into an HTTPS site URL.
+//
+// Parameters:
+// - domain: raw domain or URL string
+//
+// Returns:
+// - the normalized HTTPS URL
+// - an error when the supplied value cannot be interpreted as a valid host
 func LocalHTTPSURL(domain string) (string, error) {
 	trimmed := strings.TrimSpace(domain)
 	if trimmed == "" {
@@ -224,6 +347,15 @@ func LocalHTTPSURL(domain string) (string, error) {
 	return "https://" + trimmed, nil
 }
 
+// validateURL parses raw and rejects values that do not contain both scheme
+// and host parts.
+//
+// Parameters:
+// - raw: raw URL string to validate
+//
+// Returns:
+// - the normalized URL string
+// - an error when the URL is missing a scheme or host
 func validateURL(raw string) (string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {

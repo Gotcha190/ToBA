@@ -12,14 +12,41 @@ import (
 
 type ImportDatabaseStep struct{}
 
+// NewImportDatabaseStep creates the pipeline step that prepares and imports
+// the starter database dump.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - a configured ImportDatabaseStep instance
 func NewImportDatabaseStep() *ImportDatabaseStep {
 	return &ImportDatabaseStep{}
 }
 
+// Name returns the human-readable pipeline label for this step.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - the display name used by pipeline logging
 func (s *ImportDatabaseStep) Name() string {
 	return "Import database"
 }
 
+// Run prepares the SQL dump, imports it into Lando, and rewrites the source
+// URL to the local HTTPS domain.
+//
+// Parameters:
+// - ctx: shared create context containing prepared starter data, project paths, and runner access
+//
+// Returns:
+// - an error when the starter database is missing, cannot be prepared, or the import/rewrite commands fail
+//
+// Side effects:
+// - writes the normalized SQL dump into the project app directory
+// - runs `lando db-import` and `lando wp search-replace` unless dry-run mode is enabled
 func (s *ImportDatabaseStep) Run(ctx *create.Context) error {
 	if ctx.StarterData.DatabasePath == "" {
 		return fmt.Errorf("database starter file is not prepared")

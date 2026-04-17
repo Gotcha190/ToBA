@@ -11,14 +11,41 @@ import (
 
 type GenerateLandoConfigStep struct{}
 
+// NewGenerateLandoConfigStep creates the pipeline step that writes the local
+// Lando, PHP, and WP-CLI configuration files.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - a configured GenerateLandoConfigStep instance
 func NewGenerateLandoConfigStep() *GenerateLandoConfigStep {
 	return &GenerateLandoConfigStep{}
 }
 
+// Name returns the human-readable pipeline label for this step.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - the display name used by pipeline logging
 func (s *GenerateLandoConfigStep) Name() string {
 	return "Generate .lando.yml"
 }
 
+// Run renders and writes the local project configuration files consumed by
+// Lando and WP-CLI.
+//
+// Parameters:
+// - ctx: shared create context containing config, project paths, and logger access
+//
+// Returns:
+// - an error when embedded templates cannot be read or target files cannot be written
+//
+// Side effects:
+// - writes `.lando.yml`, `config/php.ini`, and `wp-cli.yml` to the project directory
+// - logs planned writes instead of touching the filesystem in dry-run mode
 func (s *GenerateLandoConfigStep) Run(ctx *create.Context) error {
 	rendered, err := lando.RenderConfig(ctx.Config)
 	if err != nil {

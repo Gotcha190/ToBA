@@ -32,6 +32,39 @@ func TestPrintUsageDoesNotMentionUpdate(t *testing.T) {
 	}
 }
 
+func TestPrintUsageStartsWithBanner(t *testing.T) {
+	stdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	defer reader.Close()
+
+	os.Stdout = writer
+	printUsage()
+	writer.Close()
+	os.Stdout = stdout
+
+	output, readErr := io.ReadAll(reader)
+	if readErr != nil {
+		t.Fatalf("failed to read usage output: %v", readErr)
+	}
+
+	rendered := string(output)
+	if !strings.HasPrefix(rendered, usageBanner) {
+		t.Fatalf("usage should start with banner, got %q", rendered)
+	}
+
+	usageIndex := strings.Index(rendered, "Usage: toba <command>")
+	if usageIndex == -1 {
+		t.Fatalf("usage header missing, got %q", rendered)
+	}
+
+	if usageIndex <= len(usageBanner)-1 {
+		t.Fatalf("usage header should be printed after banner, got %q", rendered)
+	}
+}
+
 func TestRunConfigWithoutInitCreatesGlobalTemplate(t *testing.T) {
 	workDir := t.TempDir()
 	original, err := os.Getwd()

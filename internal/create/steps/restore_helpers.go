@@ -9,6 +9,20 @@ import (
 	"github.com/gotcha190/toba/internal/project"
 )
 
+// restoreLocalZip extracts a single prepared archive into destination.
+//
+// Parameters:
+// - ctx: shared create context containing logger state and dry-run mode
+// - archivePath: prepared archive file to extract
+// - destination: extraction target directory
+// - label: logical backup category used in error messages
+//
+// Returns:
+// - an error when the archive is missing or extraction fails
+//
+// Side effects:
+// - may extract files into destination
+// - logs the extraction result or planned action
 func restoreLocalZip(ctx *create.Context, archivePath string, destination string, label string) error {
 	if archivePath == "" {
 		return fmt.Errorf("%s archive is not prepared", label)
@@ -27,6 +41,20 @@ func restoreLocalZip(ctx *create.Context, archivePath string, destination string
 	return nil
 }
 
+// restoreLocalZips extracts a prepared archive set into destination.
+//
+// Parameters:
+// - ctx: shared create context containing logger state and dry-run mode
+// - archivePaths: prepared archives to extract
+// - destination: extraction target directory
+// - label: logical backup category used in logs and errors
+//
+// Returns:
+// - an error when no archives were prepared or any archive extraction fails
+//
+// Side effects:
+// - may extract multiple archives into destination
+// - logs planned or completed extraction actions
 func restoreLocalZips(ctx *create.Context, archivePaths []string, destination string, label string) error {
 	if len(archivePaths) == 0 {
 		return fmt.Errorf("%s archives are not prepared", label)
@@ -46,6 +74,15 @@ func restoreLocalZips(ctx *create.Context, archivePaths []string, destination st
 	return nil
 }
 
+// relativePath returns target relative to baseDir and falls back to target on
+// path resolution failures.
+//
+// Parameters:
+// - baseDir: base directory used for the relative-path calculation
+// - target: path that should be made relative to baseDir
+//
+// Returns:
+// - the relative path, or target unchanged when the calculation fails
 func relativePath(baseDir string, target string) string {
 	relative, err := filepath.Rel(baseDir, target)
 	if err != nil {

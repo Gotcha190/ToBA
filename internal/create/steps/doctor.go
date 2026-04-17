@@ -9,14 +9,39 @@ import (
 
 type DoctorStep struct{}
 
+// NewDoctorStep creates the pipeline step that checks required external tools.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - a configured DoctorStep instance
 func NewDoctorStep() *DoctorStep {
 	return &DoctorStep{}
 }
 
+// Name returns the human-readable pipeline label for this step.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - the display name used by pipeline logging
 func (s *DoctorStep) Name() string {
 	return "Doctor check"
 }
 
+// Run verifies that all binaries needed by the full create workflow are
+// available in PATH.
+//
+// Parameters:
+// - ctx: shared create context providing logger access
+//
+// Returns:
+// - an error when any required binary is missing
+//
+// Side effects:
+// - writes one log entry per dependency check
 func (s *DoctorStep) Run(ctx *create.Context) error {
 
 	var missing []string

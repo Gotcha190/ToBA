@@ -9,14 +9,41 @@ import (
 
 type ClearImportedCachesStep struct{}
 
+// NewClearImportedCachesStep creates the pipeline step that removes imported
+// caches and flushes the WordPress object cache.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - a configured ClearImportedCachesStep instance
 func NewClearImportedCachesStep() *ClearImportedCachesStep {
 	return &ClearImportedCachesStep{}
 }
 
+// Name returns the human-readable pipeline label for this step.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - the display name used by pipeline logging
 func (s *ClearImportedCachesStep) Name() string {
 	return "Clear imported caches"
 }
 
+// Run removes wp-content/cache and flushes the WordPress cache inside the
+// local environment.
+//
+// Parameters:
+// - ctx: shared create context containing project paths and runner access
+//
+// Returns:
+// - an error when cache deletion or cache flushing fails
+//
+// Side effects:
+// - removes the imported cache directory from disk
+// - runs `lando wp cache flush` unless dry-run mode is enabled
 func (s *ClearImportedCachesStep) Run(ctx *create.Context) error {
 	cacheDir := filepath.Join(ctx.Paths.WPContent, "cache")
 

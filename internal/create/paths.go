@@ -19,6 +19,16 @@ type ProjectPaths struct {
 	DatabaseSQL string
 }
 
+// NewProjectPaths builds the canonical project directory layout for the given
+// base directory and project name.
+//
+// Parameters:
+// - baseDir: parent directory in which the project root will live
+// - projectName: normalized project slug
+//
+// Returns:
+//   - a ProjectPaths value containing the derived root, app, config, and
+//     WordPress subpaths
 func NewProjectPaths(baseDir, projectName string) ProjectPaths {
 	root := filepath.Join(baseDir, projectName)
 	app := filepath.Join(root, "app")

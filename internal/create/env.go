@@ -16,11 +16,31 @@ const envFileName = ".env"
 const envExampleFileName = ".env.example"
 const globalConfigDirName = "toba"
 
+// LoadEnvConfig loads the global ToBA configuration and returns only the
+// resolved ProjectConfig value.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - the resolved project configuration
+// - an error when the global config path or file content cannot be read
 func LoadEnvConfig() (ProjectConfig, error) {
 	config, _, _, err := ResolveEnvConfig()
 	return config, err
 }
 
+// ResolveEnvConfig loads the global ToBA configuration file and returns the
+// parsed config together with source metadata.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - the parsed project configuration
+// - the global config path when the file exists
+// - a reserved template flag, currently always false for resolved env files
+// - an error when the path or file content cannot be read
 func ResolveEnvConfig() (ProjectConfig, string, bool, error) {
 	envPath, err := GlobalEnvPath()
 	if err != nil {
@@ -46,6 +66,15 @@ func ResolveEnvConfig() (ProjectConfig, string, bool, error) {
 	}, envPath, false, nil
 }
 
+// GlobalEnvPath returns the absolute path to the shared ToBA config file in
+// the user's config directory.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - the absolute config path
+// - an error when the user config directory cannot be resolved
 func GlobalEnvPath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -55,6 +84,18 @@ func GlobalEnvPath() (string, error) {
 	return filepath.Join(configDir, globalConfigDirName, envFileName), nil
 }
 
+// ResolveGlobalEnvInitialization picks the content source for `toba config`
+// and returns the source bytes together with source and target metadata.
+//
+// Parameters:
+// - sourceDir: directory used to detect whether ToBA is running inside its own repository
+//
+// Returns:
+// - the source file content that should be written
+// - the logical or physical source path
+// - the target global config path
+// - whether the selected source is a template rather than a concrete repo config
+// - an error when either source or target resolution fails
 func ResolveGlobalEnvInitialization(sourceDir string) ([]byte, string, string, bool, error) {
 	targetPath, err := GlobalEnvPath()
 	if err != nil {
@@ -69,6 +110,19 @@ func ResolveGlobalEnvInitialization(sourceDir string) ([]byte, string, string, b
 	return content, sourcePath, targetPath, fromTemplate, nil
 }
 
+// WriteGlobalEnv writes the shared ToBA config file and converts permission
+// failures into user-friendly messages.
+//
+// Parameters:
+// - targetPath: absolute path of the global config file to create or overwrite
+// - content: file content to write
+//
+// Returns:
+// - an error when the parent directory cannot be created or the file cannot be written
+//
+// Side effects:
+// - creates the target directory when needed
+// - writes the global config file on disk
 func WriteGlobalEnv(targetPath string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 		return wrapGlobalEnvPermissionError(targetPath, err)
@@ -80,6 +134,17 @@ func WriteGlobalEnv(targetPath string, content []byte) error {
 	return nil
 }
 
+// resolveGlobalEnvSource chooses the best available source for initializing
+// the shared config, preferring repository files over embedded defaults.
+//
+// Parameters:
+// - sourceDir: directory used to check for repository-local .env files
+//
+// Returns:
+// - the chosen source content
+// - the chosen source path or logical embedded identifier
+// - whether the chosen source is a template
+// - an error when a candidate file cannot be read
 func resolveGlobalEnvSource(sourceDir string) ([]byte, string, bool, error) {
 	if isTobaRepositoryRoot(sourceDir) {
 		for _, fileName := range []string{envFileName, envExampleFileName} {
@@ -102,6 +167,14 @@ func resolveGlobalEnvSource(sourceDir string) ([]byte, string, bool, error) {
 	return content, "embedded:.env.example", true, nil
 }
 
+// isTobaRepositoryRoot detects whether dir looks like the root of the ToBA
+// repository by checking the module path and command entrypoint.
+//
+// Parameters:
+// - dir: directory to inspect
+//
+// Returns:
+// - true when dir appears to be the ToBA repository root
 func isTobaRepositoryRoot(dir string) bool {
 	goModPath := filepath.Join(dir, "go.mod")
 	goModContent, err := os.ReadFile(goModPath)
@@ -119,6 +192,15 @@ func isTobaRepositoryRoot(dir string) bool {
 	return true
 }
 
+// wrapGlobalEnvPermissionError rewrites permission failures into clearer
+// errors that include the target config path.
+//
+// Parameters:
+// - targetPath: path that could not be written
+// - err: original filesystem error
+//
+// Returns:
+// - a friendlier permission error or the original error when it is not a permission issue
 func wrapGlobalEnvPermissionError(targetPath string, err error) error {
 	if errors.Is(err, fs.ErrPermission) {
 		return fmt.Errorf("cannot write global config at %s: permission denied", targetPath)
@@ -127,6 +209,14 @@ func wrapGlobalEnvPermissionError(targetPath string, err error) error {
 	return err
 }
 
+// loadEnvFile parses a simple KEY=VALUE env file into a string map.
+//
+// Parameters:
+// - path: env file path to read
+//
+// Returns:
+// - a map of parsed key-value pairs
+// - an error when the file cannot be opened or contains invalid entries
 func loadEnvFile(path string) (map[string]string, error) {
 	file, err := os.Open(path)
 	if err != nil {

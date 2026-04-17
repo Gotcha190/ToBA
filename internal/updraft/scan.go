@@ -17,10 +17,26 @@ type Selection struct {
 	Themes   []string
 }
 
+// HasRecognizedFiles reports whether the selection contains at least one known
+// local backup artifact.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - true when any recognized backup category is populated
 func (s Selection) HasRecognizedFiles() bool {
 	return s.Database != "" || len(s.Plugins) > 0 || len(s.Uploads) > 0 || len(s.Others) > 0 || len(s.Themes) > 0
 }
 
+// ValidateLocalProjectSet checks that all required backup categories are
+// present in the selection.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - an error listing the missing categories when the local backup set is incomplete
 func (s Selection) ValidateLocalProjectSet() error {
 	var missing []string
 
@@ -44,6 +60,15 @@ func (s Selection) ValidateLocalProjectSet() error {
 	return nil
 }
 
+// ScanProjectDir inspects the root directory for loose Updraft backup files
+// and groups them by category.
+//
+// Parameters:
+// - root: project directory that should be scanned for loose backup files
+//
+// Returns:
+// - the grouped local backup selection
+// - an error when the directory cannot be read or contains unsupported backup artifacts
 func ScanProjectDir(root string) (Selection, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -109,6 +134,15 @@ func ScanProjectDir(root string) (Selection, error) {
 	return selection, nil
 }
 
+// ClassifyLooseBackupFile identifies the backup category represented by name.
+//
+// Parameters:
+// - name: backup filename to classify
+//
+// Returns:
+// - the detected category name
+// - whether the file matches a supported backup pattern
+// - an error when the file looks like a backup artifact but uses an unsupported naming scheme
 func ClassifyLooseBackupFile(name string) (string, bool, error) {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	switch {
@@ -131,6 +165,15 @@ func ClassifyLooseBackupFile(name string) (string, bool, error) {
 	}
 }
 
+// isNumberedArchive reports whether name matches a category zip file with an
+// optional numeric suffix.
+//
+// Parameters:
+// - name: archive filename to inspect
+// - suffix: expected archive category suffix such as plugins or uploads
+//
+// Returns:
+// - true when the filename matches the expected numbered archive pattern
 func isNumberedArchive(name string, suffix string) bool {
 	if !strings.HasSuffix(name, ".zip") {
 		return false
@@ -156,6 +199,14 @@ func isNumberedArchive(name string, suffix string) bool {
 	return true
 }
 
+// looksLikeBackupArtifact reports whether name resembles a supported backup
+// artifact extension even if its exact category is unknown.
+//
+// Parameters:
+// - name: filename to inspect
+//
+// Returns:
+// - true when the filename uses a known backup artifact extension
 func looksLikeBackupArtifact(name string) bool {
 	return strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".gz")
 }

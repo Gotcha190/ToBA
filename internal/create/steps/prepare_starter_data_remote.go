@@ -11,6 +11,19 @@ import (
 	"github.com/gotcha190/toba/internal/create"
 )
 
+// prepareRemoteStarterData fetches starter data from the configured SSH host
+// when no local backup folder is available.
+//
+// Parameters:
+// - ctx: shared create context containing SSH config, starter-data state, and runner access
+//
+// Returns:
+// - an error when the SSH target is invalid or starter assets cannot be prepared or downloaded
+//
+// Side effects:
+// - creates a temporary working directory
+// - runs remote SSH commands and SCP downloads
+// - populates ctx.StarterData with downloaded asset paths
 func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 	target, err := parseSSHTarget(ctx.Config.SSHTarget)
 	if err != nil {
@@ -109,6 +122,15 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 	return nil
 }
 
+// normalizeSourceURL validates the captured remote site URL and returns a
+// normalized string form.
+//
+// Parameters:
+// - raw: raw URL string captured from the remote WordPress installation
+//
+// Returns:
+// - a normalized URL string
+// - an error when the URL is missing a scheme or host
 func normalizeSourceURL(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	parsed, err := url.Parse(trimmed)
