@@ -292,6 +292,38 @@ func TestRunCreateUsesEnvConfig(t *testing.T) {
 	}
 }
 
+func TestRunCreateWritesConfigSourceToProvidedOutput(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{}
+	output := &strings.Builder{}
+
+	globalEnvPath, err := create.GlobalEnvPath()
+	if err != nil {
+		t.Fatalf("GlobalEnvPath returned error: %v", err)
+	}
+
+	env := "" +
+		"TOBA_PROJECT_NAME=demo\n" +
+		"TOBA_PHP_VERSION=8.4\n" +
+		"TOBA_STARTER_REPO=" + testStarterRepo + "\n" +
+		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n"
+	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(globalEnvPath, []byte(env), 0644); err != nil {
+		t.Fatalf("failed to write global env file: %v", err)
+	}
+
+	if err := runCreateWithIO(CreateOptions{}, runner, strings.NewReader("n\n"), output); err != nil {
+		t.Fatalf("runCreateWithIO returned error: %v", err)
+	}
+
+	if !strings.Contains(output.String(), "Using config from "+globalEnvPath) {
+		t.Fatalf("expected config source log, got %q", output.String())
+	}
+}
+
 func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)

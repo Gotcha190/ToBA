@@ -1,8 +1,10 @@
 package create
 
+import "os"
+
 func NewContext(baseDir string, config ProjectConfig, logger Logger, runner CommandRunner) *Context {
 	if logger == nil {
-		logger = ConsoleLogger{}
+		logger = NewConsoleLogger(os.Stdout)
 	}
 	if runner == nil {
 		runner = ExecRunner{}

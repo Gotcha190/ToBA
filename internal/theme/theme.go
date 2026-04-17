@@ -1,7 +1,6 @@
 package theme
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,13 +25,13 @@ func Install(runner create.CommandRunner, themesDir string, starterRepo string, 
 
 	targetDir := filepath.Join(themesDir, themeName)
 	if _, err := os.Stat(targetDir); err == nil {
-		return "", fmt.Errorf("theme directory already exists: %s", targetDir)
+		return "", create.NewCodedError("THEME_DIR_EXISTS", "theme directory already exists: "+targetDir, nil)
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
 
 	if err := runner.Run(themesDir, "git", "clone", starterRepo, themeName); err != nil {
-		return "", fmt.Errorf("starter theme clone failed: %w", err)
+		return "", create.NewCodedError("THEME_CLONE_FAILED", "starter theme clone failed", err)
 	}
 
 	return targetDir, nil
@@ -40,15 +39,15 @@ func Install(runner create.CommandRunner, themesDir string, starterRepo string, 
 
 func Build(runner create.CommandRunner, themeDir string) error {
 	if err := runner.Run(themeDir, "lando", "composer", "install"); err != nil {
-		return fmt.Errorf("starter theme composer install failed: %w", err)
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme composer install failed", err)
 	}
 
 	if err := runner.Run(themeDir, "npm", "i"); err != nil {
-		return fmt.Errorf("starter theme npm install failed: %w", err)
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme npm install failed", err)
 	}
 
 	if err := runner.Run(themeDir, "npm", "run", "build"); err != nil {
-		return fmt.Errorf("starter theme build failed: %w", err)
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme build failed", err)
 	}
 
 	return nil
@@ -57,7 +56,7 @@ func Build(runner create.CommandRunner, themeDir string) error {
 func GenerateAcornKey(runner create.CommandRunner, projectDir string) error {
 	for range 2 {
 		if err := runner.Run(projectDir, "lando", "wp", "acorn", "key:generate"); err != nil {
-			return fmt.Errorf("acorn key generation failed: %w", err)
+			return create.NewCodedError("ACORN_KEY_GENERATE_FAILED", "acorn key generation failed", err)
 		}
 	}
 

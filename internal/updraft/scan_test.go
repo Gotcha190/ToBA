@@ -32,7 +32,7 @@ func TestScanProjectDirSupportsLooseBackups(t *testing.T) {
 	}
 }
 
-func TestScanProjectDirSupportsCategorizedBackups(t *testing.T) {
+func TestScanProjectDirIgnoresCategorizedBackups(t *testing.T) {
 	root := t.TempDir()
 
 	writeTestFile(t, filepath.Join(root, "database", "backup-db.gz"), "db")
@@ -45,12 +45,8 @@ func TestScanProjectDirSupportsCategorizedBackups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ScanProjectDir returned error: %v", err)
 	}
-
-	if selection.Database == "" {
-		t.Fatal("expected categorized database backup to be detected")
-	}
-	if len(selection.Plugins) != 1 || len(selection.Uploads) != 1 || len(selection.Themes) != 1 || len(selection.Others) != 1 {
-		t.Fatalf("unexpected selection: %#v", selection)
+	if selection.HasRecognizedFiles() {
+		t.Fatalf("expected categorized backups to be ignored, got %#v", selection)
 	}
 }
 
@@ -58,7 +54,7 @@ func TestScanProjectDirRejectsMultipleDatabaseBackups(t *testing.T) {
 	root := t.TempDir()
 
 	writeTestFile(t, filepath.Join(root, "backup-db.gz"), "db1")
-	writeTestFile(t, filepath.Join(root, "database", "backup-db.sql"), "db2")
+	writeTestFile(t, filepath.Join(root, "backup-db.sql"), "db2")
 
 	_, err := ScanProjectDir(root)
 	if err == nil {

@@ -2,7 +2,6 @@ package lando
 
 import (
 	"bytes"
-	"fmt"
 	"text/template"
 
 	"github.com/gotcha190/ToBA/internal/create"
@@ -30,7 +29,7 @@ func RenderConfig(config create.ProjectConfig) ([]byte, error) {
 
 func Start(runner create.CommandRunner, projectDir string) error {
 	if err := runner.Run(projectDir, "lando", "start"); err != nil {
-		return fmt.Errorf("lando start failed: %w", err)
+		return create.NewCodedError("LANDO_START_FAILED", "lando start failed", err)
 	}
 
 	return nil

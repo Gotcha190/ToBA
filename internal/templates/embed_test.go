@@ -1,26 +1,29 @@
 package templates
 
 import (
-	"strings"
 	"testing"
 )
 
-func TestReadUsesEmbeddedPrefix(t *testing.T) {
-	content, err := Read("embedded:wp-cli.yml")
-	if err != nil {
-		t.Fatalf("Read returned error: %v", err)
-	}
-	if !strings.Contains(string(content), "path: app") {
-		t.Fatalf("unexpected wp-cli.yml content: %q", string(content))
+func TestReadReturnsEmbeddedTemplates(t *testing.T) {
+	for _, name := range []string{
+		"config/php.ini",
+		"lando/.lando.yml",
+		"wp-cli.yml",
+	} {
+		content, err := Read(name)
+		if err != nil {
+			t.Fatalf("Read(%q) returned error: %v", name, err)
+		}
+		if len(content) == 0 {
+			t.Fatalf("Read(%q) returned empty content", name)
+		}
 	}
 }
 
-func TestListReturnsEmptySliceForMissingEmbeddedDir(t *testing.T) {
-	entries, err := List("wordpress/does-not-exist")
+func TestReadRejectsMissingTemplate(t *testing.T) {
+	_, err := Read("missing.yml")
 	if err != nil {
-		t.Fatalf("List returned error: %v", err)
+		return
 	}
-	if len(entries) != 0 {
-		t.Fatalf("expected no entries, got %v", entries)
-	}
+	t.Fatal("expected missing template error")
 }

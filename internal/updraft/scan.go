@@ -8,14 +8,6 @@ import (
 	"strings"
 )
 
-var categorizedDirs = map[string]struct{}{
-	"database": {},
-	"plugins":  {},
-	"uploads":  {},
-	"others":   {},
-	"themes":   {},
-}
-
 type Selection struct {
 	Root     string
 	Database string
@@ -65,27 +57,11 @@ func ScanProjectDir(root string) (Selection, error) {
 	var themesFiles []string
 
 	for _, entry := range entries {
-		entryPath := filepath.Join(root, entry.Name())
-
 		if entry.IsDir() {
-			if _, ok := categorizedDirs[entry.Name()]; !ok {
-				continue
-			}
-
-			matches, scanErr := scanCategorizedDir(root, entry.Name())
-			if scanErr != nil {
-				return Selection{}, scanErr
-			}
-
-			if matches.Database != "" {
-				databaseFiles = append(databaseFiles, matches.Database)
-			}
-			pluginsFiles = append(pluginsFiles, matches.Plugins...)
-			uploadsFiles = append(uploadsFiles, matches.Uploads...)
-			othersFiles = append(othersFiles, matches.Others...)
-			themesFiles = append(themesFiles, matches.Themes...)
 			continue
 		}
+
+		entryPath := filepath.Join(root, entry.Name())
 
 		category, ok, classifyErr := ClassifyLooseBackupFile(entry.Name())
 		if classifyErr != nil {
@@ -120,11 +96,11 @@ func ScanProjectDir(root string) (Selection, error) {
 	}
 
 	selection := Selection{
-		Root:     root,
-		Plugins:  pluginsFiles,
-		Uploads:  uploadsFiles,
-		Others:   othersFiles,
-		Themes:   themesFiles,
+		Root:    root,
+		Plugins: pluginsFiles,
+		Uploads: uploadsFiles,
+		Others:  othersFiles,
+		Themes:  themesFiles,
 	}
 	if len(databaseFiles) == 1 {
 		selection.Database = databaseFiles[0]
@@ -152,69 +128,6 @@ func ClassifyLooseBackupFile(name string) (string, bool, error) {
 		return "", false, fmt.Errorf("unsupported backup file: %s", name)
 	default:
 		return "", false, nil
-	}
-}
-
-func scanCategorizedDir(root string, category string) (Selection, error) {
-	categoryRoot := filepath.Join(root, category)
-	var matches []string
-
-	err := filepath.WalkDir(categoryRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-
-		if matchesCategoryFile(category, d.Name()) {
-			matches = append(matches, path)
-			return nil
-		}
-		if looksLikeBackupArtifact(strings.ToLower(d.Name())) {
-			relative, relErr := filepath.Rel(root, path)
-			if relErr != nil {
-				relative = path
-			}
-			return fmt.Errorf("unsupported backup file in %s: %s", category, relative)
-		}
-		return nil
-	})
-	if err != nil {
-		return Selection{}, err
-	}
-
-	sort.Strings(matches)
-
-	selection := Selection{Root: root}
-	switch category {
-	case "database":
-		if len(matches) > 1 {
-			return Selection{}, fmt.Errorf("expected exactly 1 database backup, found %d", len(matches))
-		}
-		if len(matches) == 1 {
-			selection.Database = matches[0]
-		}
-	case "plugins":
-		selection.Plugins = matches
-	case "uploads":
-		selection.Uploads = matches
-	case "others":
-		selection.Others = matches
-	case "themes":
-		selection.Themes = matches
-	}
-
-	return selection, nil
-}
-
-func matchesCategoryFile(category string, name string) bool {
-	lower := strings.ToLower(name)
-	switch category {
-	case "database":
-		return strings.HasSuffix(lower, ".sql") || strings.HasSuffix(lower, ".gz")
-	default:
-		return strings.HasSuffix(lower, ".zip")
 	}
 }
 

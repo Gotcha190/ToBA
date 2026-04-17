@@ -15,10 +15,12 @@ type starterTestLogger struct {
 	warnings []string
 }
 
-func (l *starterTestLogger) Step(string)    {}
-func (l *starterTestLogger) Info(string)    {}
-func (l *starterTestLogger) Success(string) {}
-func (l *starterTestLogger) Error(string)   {}
+func (l *starterTestLogger) Step(string)              {}
+func (l *starterTestLogger) Info(string)              {}
+func (l *starterTestLogger) Prompt(string)            {}
+func (l *starterTestLogger) Success(string)           {}
+func (l *starterTestLogger) Error(string)             {}
+func (l *starterTestLogger) ErrorCode(string, string) {}
 func (l *starterTestLogger) Warning(msg string) {
 	l.warnings = append(l.warnings, msg)
 }
@@ -77,7 +79,7 @@ func TestPrepareStarterDataUsesLocalProjectBackupsWhenComplete(t *testing.T) {
 	}
 }
 
-func TestPrepareStarterDataUsesCategorizedLocalProjectBackups(t *testing.T) {
+func TestPrepareStarterDataIgnoresCategorizedLocalProjectBackups(t *testing.T) {
 	baseDir := t.TempDir()
 	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
 
@@ -86,12 +88,12 @@ func TestPrepareStarterDataUsesCategorizedLocalProjectBackups(t *testing.T) {
 	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "uploads", "uploads-a.zip"), "uploads")
 	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "themes", "themes-a.zip"), "themes")
 
-	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
-		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected categorized backups to be ignored")
 	}
-
-	if ctx.StarterData.Mode != starterDataModeLocal {
-		t.Fatalf("unexpected starter mode: %q", ctx.StarterData.Mode)
+	if !strings.Contains(err.Error(), "contains no recognizable Updraft backup files") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -159,7 +161,7 @@ func TestPrepareStarterDataRejectsMultipleLocalDatabases(t *testing.T) {
 	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
 
 	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.gz"), "db")
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "database", "backup-db.sql"), "db2")
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.sql"), "db2")
 
 	err := NewPrepareStarterDataStep().Run(ctx)
 	if err == nil {
