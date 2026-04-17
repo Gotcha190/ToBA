@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 const (
@@ -178,7 +178,7 @@ func DetectImportedThemeSlug(runner create.CommandRunner, projectDir string) (st
 		}
 	}
 
-	return "", fmt.Errorf("theme detection failed: imported database does not expose stylesheet/template")
+	return "", fmt.Errorf("theme detection failed: imported database does not expose stylesheet/template; make sure the restored database points to the imported theme and activate the theme manually if needed")
 }
 
 func FlushRewriteRules(runner create.CommandRunner, projectDir string) error {

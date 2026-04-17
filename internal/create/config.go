@@ -19,18 +19,25 @@ type ProjectConfig struct {
 }
 
 func (c *ProjectConfig) Normalize() error {
-	c.Name = strings.TrimSpace(c.Name)
+	c.Name = strings.ToLower(strings.TrimSpace(c.Name))
 	if c.Name == "" {
 		return fmt.Errorf("project name cannot be empty")
+	}
+	if strings.ContainsAny(c.Name, " \t\r\n") {
+		return fmt.Errorf("project name cannot contain spaces: %q", c.Name)
+	}
+	for _, char := range c.Name {
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' || char == '_' {
+			continue
+		}
+		return fmt.Errorf("project name can only contain lowercase letters, numbers, hyphens, and underscores: %q", c.Name)
 	}
 
 	if strings.TrimSpace(c.PHPVersion) == "" {
 		c.PHPVersion = DefaultPHPVersion
 	}
 
-	if strings.TrimSpace(c.Domain) == "" {
-		c.Domain = fmt.Sprintf("%s.lndo.site", c.Name)
-	}
+	c.Domain = fmt.Sprintf("%s.lndo.site", strings.ReplaceAll(c.Name, "_", "-"))
 
 	c.Database = DefaultDatabaseName
 

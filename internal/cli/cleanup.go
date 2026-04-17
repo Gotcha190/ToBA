@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 func cleanupFailedInstall(ctx *create.Context, input io.Reader) {
@@ -33,7 +33,9 @@ func cleanupFailedInstall(ctx *create.Context, input io.Reader) {
 	}
 
 	if err := destroyLandoApp(ctx); err != nil {
-		ctx.Logger.Warning("Failed to destroy Lando app in " + ctx.Paths.Root + ": " + err.Error())
+		ctx.Logger.Error("Failed to destroy Lando app in " + ctx.Paths.Root + ": " + err.Error())
+		ctx.Logger.Error("Keeping project directory because removing it now could make manual Lando cleanup harder: " + ctx.Paths.Root)
+		return
 	}
 
 	if err := os.RemoveAll(ctx.Paths.Root); err != nil {

@@ -1,7 +1,7 @@
 package steps
 
-import "github.com/gotcha190/ToBA/internal/create"
-import "github.com/gotcha190/ToBA/internal/wordpress"
+import "github.com/gotcha190/toba/internal/create"
+import "github.com/gotcha190/toba/internal/wordpress"
 
 type ActivateThemeStep struct{}
 

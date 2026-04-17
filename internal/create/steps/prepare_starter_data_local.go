@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/updraft"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/updraft"
 )
 
 func prepareLocalStarterData(ctx *create.Context) error {

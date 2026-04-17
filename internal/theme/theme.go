@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 type MissingStarterRepoError struct{}
 
 func (e MissingStarterRepoError) Error() string {
-	return "starter repo is not configured; add TOBA_STARTER_REPO to ~/.config/toba/.env via 'ToBA config init' or pass --starter-repo and try again"
+	return "starter repo is not configured; add TOBA_STARTER_REPO to ~/.config/toba/.env via 'toba config' or pass --starter-repo and try again"
 }
 
 func Install(runner create.CommandRunner, themesDir string, starterRepo string, themeName string) (string, error) {

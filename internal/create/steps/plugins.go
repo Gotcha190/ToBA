@@ -1,6 +1,6 @@
 package steps
 
-import "github.com/gotcha190/ToBA/internal/create"
+import "github.com/gotcha190/toba/internal/create"
 
 type ImportPluginsStep struct{}
 

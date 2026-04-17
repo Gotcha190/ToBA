@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 type recordedCommand struct {

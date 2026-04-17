@@ -3,8 +3,8 @@ package steps
 import (
 	"path/filepath"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/theme"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/theme"
 )
 
 type BuildThemeStep struct{}

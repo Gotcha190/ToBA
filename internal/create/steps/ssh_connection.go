@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 const (
@@ -42,13 +42,17 @@ func parseSSHTarget(raw string) (sshTarget, error) {
 }
 
 func runSSHCommand(ctx *create.Context, target sshTarget, remoteDir string, script string) error {
-	return ctx.Runner.Run("", "ssh", "-p", target.Port, target.UserHost, remoteScript(remoteDir, script))
+	if err := ctx.Runner.Run("", "ssh", "-p", target.Port, target.UserHost, remoteScript(remoteDir, script)); err != nil {
+		return fmt.Errorf("SSH command failed on %s:%s: %w", target.UserHost, target.Port, err)
+	}
+
+	return nil
 }
 
 func captureSSHCommand(ctx *create.Context, target sshTarget, remoteDir string, script string) (string, error) {
 	output, err := ctx.Runner.CaptureOutput("", "ssh", "-p", target.Port, target.UserHost, remoteScript(remoteDir, script))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to connect to SSH starter host %s:%s: %w", target.UserHost, target.Port, err)
 	}
 
 	return strings.TrimSpace(output), nil
@@ -59,7 +63,11 @@ func copyRemoteFile(ctx *create.Context, target sshTarget, remotePath string, lo
 		return err
 	}
 
-	return ctx.Runner.Run("", "scp", "-P", target.Port, target.UserHost+":"+remotePath, localPath)
+	if err := ctx.Runner.Run("", "scp", "-P", target.Port, target.UserHost+":"+remotePath, localPath); err != nil {
+		return fmt.Errorf("failed to download starter file from %s:%s: %w", target.UserHost, target.Port, err)
+	}
+
+	return nil
 }
 
 func remoteScript(remoteDir string, script string) string {

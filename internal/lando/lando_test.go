@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 func TestRenderConfig(t *testing.T) {

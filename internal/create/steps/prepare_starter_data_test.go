@@ -8,15 +8,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 type starterTestLogger struct {
+	infos    []string
 	warnings []string
 }
 
 func (l *starterTestLogger) Step(string)              {}
-func (l *starterTestLogger) Info(string)              {}
+func (l *starterTestLogger) Info(msg string)          { l.infos = append(l.infos, msg) }
 func (l *starterTestLogger) Prompt(string)            {}
 func (l *starterTestLogger) Success(string)           {}
 func (l *starterTestLogger) Error(string)             {}
@@ -28,6 +29,10 @@ func (l *starterTestLogger) Warning(msg string) {
 type starterTestRunner struct {
 	commands        []starterRecordedCommand
 	captureOutput   string
+	captureErr      error
+	runErrByCommand map[string]error
+	runErrContains  string
+	runErr          error
 	cleanupRunError error
 }
 
@@ -41,11 +46,22 @@ func (r *starterTestRunner) Run(dir string, cmd string, args ...string) error {
 	if cmd == "ssh" && len(args) > 0 && strings.Contains(args[len(args)-1], "rm -f") {
 		return r.cleanupRunError
 	}
+	if r.runErrByCommand != nil {
+		if err, ok := r.runErrByCommand[cmd+" "+strings.Join(args, " ")]; ok {
+			return err
+		}
+	}
+	if r.runErrContains != "" && strings.Contains(cmd+" "+strings.Join(args, " "), r.runErrContains) {
+		return r.runErr
+	}
 	return nil
 }
 
 func (r *starterTestRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
 	r.commands = append(r.commands, starterRecordedCommand{dir: dir, cmd: cmd, args: append([]string(nil), args...)})
+	if r.captureErr != nil {
+		return "", r.captureErr
+	}
 	return r.captureOutput, nil
 }
 
@@ -119,6 +135,26 @@ func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testin
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)
 		}
+	}
+	for _, expected := range []string{
+		"No local project backup folder found; using SSH starter data",
+		"Preparing starter files on SSH host user@192.168.0.1 -p 22",
+		"Downloading starter database over SSH",
+		"Downloading starter plugins over SSH",
+		"Downloading starter uploads over SSH",
+	} {
+		if !containsString(logger.infos, expected) {
+			t.Fatalf("expected info log %q, got %#v", expected, logger.infos)
+		}
+	}
+	if len(logger.infos) < 2 {
+		t.Fatalf("expected multiple info logs, got %#v", logger.infos)
+	}
+	if logger.infos[0] != "No local project backup folder found; using SSH starter data" {
+		t.Fatalf("expected SSH source info first, got %#v", logger.infos)
+	}
+	if logger.infos[1] != "Preparing starter files on SSH host user@192.168.0.1 -p 22" {
+		t.Fatalf("expected SSH preparation info second, got %#v", logger.infos)
 	}
 }
 
@@ -201,6 +237,54 @@ func TestPrepareStarterDataWarnsWhenRemoteCleanupFails(t *testing.T) {
 	}
 }
 
+func TestPrepareStarterDataWrapsSSHConnectionErrors(t *testing.T) {
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
+		Name:      "demo",
+		SSHTarget: "user@192.168.0.1 -p 22",
+	}, &starterTestLogger{}, &starterTestRunner{
+		captureErr: os.ErrDeadlineExceeded,
+	})
+
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected SSH connection error")
+	}
+	if !strings.Contains(err.Error(), "failed to connect to SSH starter host user@192.168.0.1:22") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPrepareStarterDataCleansRemoteArtifactsWhenRemoteZipFails(t *testing.T) {
+	runner := &starterTestRunner{
+		captureOutput:  "https://starter.tamago-dev.pl\n",
+		runErrContains: "zip -rq ../",
+		runErr:         os.ErrInvalid,
+	}
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
+		Name:      "demo",
+		SSHTarget: "user@192.168.0.1 -p 22",
+	}, &starterTestLogger{}, runner)
+
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected zip failure")
+	}
+
+	foundCleanup := false
+	for _, command := range runner.commands {
+		if command.cmd != "ssh" || len(command.args) == 0 {
+			continue
+		}
+		if strings.Contains(command.args[len(command.args)-1], "rm -f") {
+			foundCleanup = true
+			break
+		}
+	}
+	if !foundCleanup {
+		t.Fatalf("expected cleanup command after remote zip failure, got %#v", runner.commands)
+	}
+}
+
 func writeStarterProjectFile(t *testing.T, path string, content string) {
 	t.Helper()
 
@@ -263,6 +347,16 @@ func zippedBytes(t *testing.T, files map[string]string) []byte {
 	}
 
 	return buffer.Bytes()
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+
+	return false
 }
 
 type starterRecordedCommand struct {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gotcha190/ToBA/internal/cli"
+	"github.com/gotcha190/toba/internal/cli"
 )
 
 func Execute() {
@@ -44,12 +44,11 @@ func runCreate(args []string) error {
 
 	var opts cli.CreateOptions
 	fs.StringVar(&opts.PHPVersion, "php", "", "PHP version for the Lando appserver")
-	fs.StringVar(&opts.Domain, "domain", "", "Local domain for the project")
 	fs.StringVar(&opts.StarterRepo, "starter-repo", "", "Git repository for the starter theme")
 	fs.StringVar(&opts.SSHTarget, "ssh-target", "", "SSH target in format 'user@host -p port'")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "Print planned actions without writing files")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--domain=project.lndo.site] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--dry-run]")
 	}
 
 	projectName := ""
@@ -77,18 +76,18 @@ func runCreate(args []string) error {
 }
 
 func runConfig(args []string) error {
-	if len(args) != 1 || args[0] != "init" {
-		return fmt.Errorf("usage: toba config init")
+	if len(args) > 0 {
+		return fmt.Errorf("usage: toba config")
 	}
 
-	return cli.RunConfigInit()
+	return cli.RunConfig()
 }
 
 func printUsage() {
 	fmt.Println("Usage: toba <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  config   Initialize global ToBA configuration")
+	fmt.Println("  config   Initialize global configuration")
 	fmt.Println("  create   Create a new project skeleton")
 	fmt.Println("  doctor   Check system dependencies")
 	fmt.Println("  version  Print the current version")

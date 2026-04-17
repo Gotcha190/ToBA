@@ -3,8 +3,8 @@ package cli
 import (
 	"os"
 
-	"github.com/gotcha190/ToBA/internal/create"
-	"github.com/gotcha190/ToBA/internal/create/steps"
+	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/create/steps"
 )
 
 func RunDoctor() error {

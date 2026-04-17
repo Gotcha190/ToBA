@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/gotcha190/ToBA/internal/create"
+	"github.com/gotcha190/toba/internal/create"
 )
 
 type ClearImportedCachesStep struct{}
@@ -23,7 +23,6 @@ func (s *ClearImportedCachesStep) Run(ctx *create.Context) error {
 	if ctx.DryRun {
 		ctx.Logger.Info("Would remove: " + cacheDir)
 		ctx.Logger.Info("Would run: lando wp cache flush")
-		ctx.Logger.Info("Would run: lando wp acorn optimize:clear")
 		return nil
 	}
 
@@ -31,12 +30,9 @@ func (s *ClearImportedCachesStep) Run(ctx *create.Context) error {
 		return err
 	}
 
+	ctx.Logger.Info("Running: lando wp cache flush")
 	if err := ctx.Runner.Run(ctx.Paths.Root, "lando", "wp", "cache", "flush"); err != nil {
 		return err
-	}
-
-	if err := ctx.Runner.Run(ctx.Paths.Root, "lando", "wp", "acorn", "optimize:clear"); err != nil {
-		ctx.Logger.Warning("Failed to clear Acorn cache: " + err.Error())
 	}
 
 	return nil

@@ -3,5 +3,5 @@ package cli
 import "fmt"
 
 func RunVersion() {
-	fmt.Println("ToBA version: 0.5")
+	fmt.Println("toba version: 0.8")
 }
