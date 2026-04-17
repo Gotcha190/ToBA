@@ -8,6 +8,34 @@ import (
 	"github.com/gotcha190/toba/internal/cli"
 )
 
+const usageBanner = `
+░▒▓████████▓▒░▒▓██████▓▒░░▒▓███████▓▒░ ░▒▓██████▓▒░
+   ░▒▓█▓▒░  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+   ░▒▓█▓▒░  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+   ░▒▓█▓▒░  ░▒▓█▓▒░░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░
+   ░▒▓█▓▒░  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+   ░▒▓█▓▒░  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+   ░▒▓█▓▒░   ░▒▓██████▓▒░░▒▓███████▓▒░░▒▓█▓▒░░▒▓█▓▒░
+`
+
+// Execute parses the root command name from os.Args and dispatches execution
+// to the matching CLI handler.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - nothing
+//
+// Side effects:
+//   - writes usage text to stdout when no command is provided
+//   - writes command errors to stderr
+//   - may terminate the process with a non-zero exit code for invalid commands
+//     or command failures
+//
+// Usage:
+//
+//	toba <command>
 func Execute() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -38,6 +66,22 @@ func Execute() {
 	}
 }
 
+// runCreate parses arguments for the `toba create` command and forwards the
+// normalized options to the create CLI entrypoint.
+//
+// Parameters:
+// - args: raw command-line arguments after the `create` subcommand
+//
+// Returns:
+//   - an error when flag parsing fails, required arguments are missing, or
+//     unexpected positional arguments remain after parsing
+//
+// Side effects:
+// - configures a dedicated flag set that writes parsing errors to stderr
+//
+// Usage:
+//
+//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --dry-run
 func runCreate(args []string) error {
 	fs := flag.NewFlagSet("create", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -75,6 +119,21 @@ func runCreate(args []string) error {
 	return cli.RunCreate(opts)
 }
 
+// runConfig validates arguments for the `toba config` command and runs the
+// config bootstrap flow without any nested subcommands.
+//
+// Parameters:
+// - args: raw command-line arguments after the `config` subcommand
+//
+// Returns:
+// - an error when unexpected arguments are provided
+//
+// Side effects:
+// - triggers global configuration initialization through the CLI layer
+//
+// Usage:
+//
+//	toba config
 func runConfig(args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("usage: toba config")
@@ -83,7 +142,20 @@ func runConfig(args []string) error {
 	return cli.RunConfig()
 }
 
+// printUsage prints the ASCII banner, the root usage line, and the list of
+// available CLI commands.
+//
+// Parameters:
+// - none
+//
+// Returns:
+// - nothing
+//
+// Side effects:
+// - writes formatted help text to stdout
 func printUsage() {
+	fmt.Print(usageBanner)
+	fmt.Println()
 	fmt.Println("Usage: toba <command>")
 	fmt.Println()
 	fmt.Println("Commands:")

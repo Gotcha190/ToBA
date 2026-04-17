@@ -19,14 +19,60 @@ type CreateOptions struct {
 	DryRun      bool
 }
 
+// RunCreate runs the full ToBA project creation pipeline.
+//
+// Parameters:
+// - opts: parsed options for the `toba create` command
+//
+// Returns:
+// - an error when configuration resolution fails or any pipeline step fails
+//
+// Side effects:
+// - reads global configuration
+// - writes logs to stdout
+// - executes local commands and writes project files through the pipeline
+//
+// Usage:
+//
+//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22'
 func RunCreate(opts CreateOptions) error {
 	return runCreateWithIO(opts, create.ExecRunner{}, os.Stdin, os.Stdout)
 }
 
+// runCreateWithRunner runs the create flow with an injected command runner for
+// tests and non-interactive execution.
+//
+// Parameters:
+// - opts: parsed create options
+// - runner: command runner used instead of the default OS-backed runner
+//
+// Returns:
+// - an error when pipeline execution fails
+//
+// Side effects:
+// - uses a default negative answer for cleanup prompts
+// - discards user-facing output
 func runCreateWithRunner(opts CreateOptions, runner create.CommandRunner) error {
 	return runCreateWithIO(opts, runner, strings.NewReader("n\n"), io.Discard)
 }
 
+// runCreateWithIO resolves configuration, prepares the runtime context, and
+// executes the create pipeline using the provided IO streams.
+//
+// Parameters:
+// - opts: parsed create options coming from the CLI layer
+// - runner: command runner used for all shell execution during the run
+// - input: source used for cleanup confirmation after failures
+// - output: destination used for create logs
+//
+// Returns:
+// - an error when config resolution, context setup, or any pipeline step fails
+//
+// Side effects:
+// - reads the global config file
+// - may create, modify, or remove files and directories through pipeline steps
+// - may execute local shell commands and remote SSH commands through the runner
+// - removes the temporary starter-data directory on exit
 func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.Reader, output io.Writer) error {
 	logger := create.NewConsoleLogger(output)
 

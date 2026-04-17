@@ -10,6 +10,20 @@ import (
 	"github.com/gotcha190/toba/internal/create"
 )
 
+// cleanupFailedInstall handles post-failure cleanup for a newly created local
+// project directory.
+//
+// Parameters:
+// - ctx: create workflow context describing the failed run
+// - input: reader used to collect interactive confirmation from the user
+//
+// Returns:
+// - nothing
+//
+// Side effects:
+// - prompts the user for confirmation
+// - may destroy the local Lando app
+// - may remove the failed project directory from disk
 func cleanupFailedInstall(ctx *create.Context, input io.Reader) {
 	if ctx == nil || ctx.DryRun || !ctx.ProjectCreated {
 		return
@@ -46,6 +60,17 @@ func cleanupFailedInstall(ctx *create.Context, input io.Reader) {
 	ctx.Logger.Success("Removed failed installation: " + ctx.Paths.Root)
 }
 
+// destroyLandoApp destroys the local Lando app for a failed installation when
+// the project root already contains a .lando.yml file.
+//
+// Parameters:
+// - ctx: create workflow context containing the project root and runner
+//
+// Returns:
+// - an error when Lando destruction fails or the marker file cannot be checked
+//
+// Side effects:
+// - runs `lando destroy -y` in the project directory when applicable
 func destroyLandoApp(ctx *create.Context) error {
 	landoFilePath := filepath.Join(ctx.Paths.Root, ".lando.yml")
 	if _, err := os.Stat(landoFilePath); os.IsNotExist(err) {
