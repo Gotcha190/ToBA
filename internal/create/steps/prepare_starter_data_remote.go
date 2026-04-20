@@ -47,6 +47,10 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 		return nil
 	}
 
+	if err := ensureRemoteWordPressRootExists(ctx, target, remoteWordPressRoot); err != nil {
+		return err
+	}
+
 	tempDir, err := makeStarterTempDir()
 	if err != nil {
 		return err
@@ -88,10 +92,10 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 		return err
 	}
 	createdRemoteArtifacts = true
-	if err := runSSHCommand(ctx, target, filepath.Join(remoteWordPressRoot, "wp-content"), "zip -rq ../"+shellQuote(pathBase(remotePlugins))+" plugins"); err != nil {
+	if err := runSSHCommand(ctx, target, filepath.Join(remoteWordPressRoot, "wp-content"), "zip -r -q ../"+shellQuote(pathBase(remotePlugins))+" plugins"); err != nil {
 		return err
 	}
-	if err := runSSHCommand(ctx, target, filepath.Join(remoteWordPressRoot, "wp-content"), "zip -rq ../"+shellQuote(pathBase(remoteUploads))+" uploads"); err != nil {
+	if err := runSSHCommand(ctx, target, filepath.Join(remoteWordPressRoot, "wp-content"), "zip -r -q -0 ../"+shellQuote(pathBase(remoteUploads))+" . -i "+shellQuote("uploads/*")); err != nil {
 		return err
 	}
 
@@ -121,6 +125,34 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 		SourceURL:    sourceURL,
 	}
 	return nil
+}
+
+func ensureRemoteWordPressRootExists(ctx *create.Context, target sshTarget, remoteWordPressRoot string) error {
+	const missingMarker = "__TOBA_REMOTE_ROOT_MISSING__"
+
+	script := "if [ -d " + shellQuote(remoteWordPressRoot) + " ]; then exit 0; fi; " +
+		"printf '%s\\n' " + shellQuote(missingMarker) + "; exit 42"
+
+	output, err := ctx.Runner.CaptureOutput("", "ssh", "-p", target.Port, target.UserHost, script)
+	if err == nil {
+		return nil
+	}
+
+	if strings.Contains(output, missingMarker) {
+		return fmt.Errorf(
+			"remote WordPress root %q does not exist on %s:%s; update TOBA_REMOTE_WORDPRESS_ROOT in the global config or pass --remote-wordpress-root",
+			remoteWordPressRoot,
+			target.UserHost,
+			target.Port,
+		)
+	}
+
+	detail := strings.TrimSpace(output)
+	if detail == "" {
+		return fmt.Errorf("failed to verify remote WordPress root %q on %s:%s: %w", remoteWordPressRoot, target.UserHost, target.Port, err)
+	}
+
+	return fmt.Errorf("failed to verify remote WordPress root %q on %s:%s: %w\n%s", remoteWordPressRoot, target.UserHost, target.Port, err, detail)
 }
 
 // normalizeSourceURL validates the captured remote site URL and returns a

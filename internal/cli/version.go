@@ -15,6 +15,7 @@ const devSuffix = "dev"
 var releaseVersion string
 var readBuildInfo = debug.ReadBuildInfo
 var pseudoVersionPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+-(?:0\.)?\d{14}-[a-f0-9]{12,}(?:\+dirty)?$`)
+var taggedVersionPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+(?:\+dirty)?$`)
 
 // RunVersion prints the current CLI version string.
 //
@@ -71,10 +72,18 @@ func normalizeVersion(raw string) string {
 
 func shouldTreatBuildInfoVersionAsDev(info *debug.BuildInfo) bool {
 	version := strings.TrimSpace(info.Main.Version)
-	if !pseudoVersionPattern.MatchString(version) {
+	if !hasVCSMarker(info) {
 		return false
 	}
 
+	if pseudoVersionPattern.MatchString(version) {
+		return true
+	}
+
+	return taggedVersionPattern.MatchString(version)
+}
+
+func hasVCSMarker(info *debug.BuildInfo) bool {
 	for _, setting := range info.Settings {
 		if setting.Key == "vcs" && setting.Value != "" {
 			return true
