@@ -76,6 +76,9 @@ fi
 
 git -C "${tap_dir}" config user.name "gotcha190"
 git -C "${tap_dir}" config user.email "gotcha190@users.noreply.github.com"
+if [ -n "${GH_TOKEN:-}" ]; then
+	git -C "${tap_dir}" remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/Gotcha190/homebrew-toba.git"
+fi
 git -C "${tap_dir}" add Formula/toba.rb
 git -C "${tap_dir}" add -A
 if git -C "${tap_dir}" diff --cached --quiet; then
