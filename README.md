@@ -18,6 +18,8 @@ ToBA to narzędzie CLI napisane w Go, które automatyzuje przygotowanie lokalneg
 
 ## Co robi ToBA
 
+Wpisanie `toba` pokazuje dostępne komendy 
+
 ToBA udostępnia cztery komendy:
 
 - `toba config` tworzy lub odświeża globalny plik konfiguracyjny w `~/.config/toba/.env`.
@@ -28,12 +30,13 @@ ToBA udostępnia cztery komendy:
 Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
-- `SSH fallback mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
+- `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
 
 ## Wymagania
 
 Do pełnego działania potrzebne są:
 
+- #### dodany klucz ssh do serwera 
 - `git`
 - `node`
 - `npm`
@@ -220,29 +223,15 @@ toba create demo --dry-run --starter-repo=git@github.com:org/repo.git --ssh-targ
 ```
 
 
-## Struktura repozytorium
+## Tworzone lokalne konto administratora wp-admin
 
-```text
-.
-├── cmd/
-├── internal/
-│   ├── cli/
-│   ├── create/
-│   │   └── steps/
-│   ├── doctor/
-│   ├── lando/
-│   ├── project/
-│   ├── templates/
-│   │   └── files/
-│   ├── theme/
-│   ├── updraft/
-│   └── wordpress/
-├── .env.example
-├── LICENSE
-├── README.md
-├── go.mod
-└── main.go
-```
+Login: `tamago`
+
+Hasło: `tamago`
+
+Email: `email@email.pl`
+
+Jest to konto lokalne, nie ma potrzeb bezpieczeństwa
 
 ## Licencja
 
