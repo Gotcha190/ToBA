@@ -35,3 +35,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Publish Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh repo clone Gotcha190/homebrew-toba /tmp/homebrew-toba
+          bash ./scripts/publish-homebrew-formula.sh "${GITHUB_REF_NAME}" /tmp/homebrew-toba dist

@@ -46,15 +46,16 @@ Do pełnego działania potrzebne są:
 
 ## Instalacja
 
-Instalacja przez Homebrew:
+Instalacja przez Homebrew na macOS i Linux:
 
 ```bash
-brew install Gotcha190/toba/toba
+brew tap gotcha190/toba
+brew install toba
 ```
 
 Instalacja z GitHub Release:
 
-- pobierz odpowiednie archiwum z `https://github.com/Gotcha190/ToBA/releases`
+- pobierz odpowiednie archiwum dla `macOS`, `Linux` albo `Windows` z `https://github.com/Gotcha190/ToBA/releases`
 - rozpakuj je i dodaj binarkę `toba` do `PATH`
 
 Instalacja przez Go:

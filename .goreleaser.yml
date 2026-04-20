@@ -81,27 +81,3 @@ release:
   github:
     owner: Gotcha190
     name: ToBA
-
-homebrew_casks:
-  - name: toba
-    ids:
-      - darwin-archives
-    binaries:
-      - toba
-    directory: Casks
-    homepage: "https://github.com/Gotcha190/ToBA"
-    description: "CLI for creating local WordPress environments with Lando"
-    commit_msg_template: "Bump toba cask to {{ .Tag }}"
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/toba"]
-          end
-    repository:
-      owner: Gotcha190
-      name: homebrew-toba
-      branch: main
-    commit_author:
-      name: gotcha190
-      email: gotcha190@users.noreply.github.com
