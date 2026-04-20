@@ -103,6 +103,29 @@ func TestResolvedVersionTreatsDirtyLocalPseudoVersionAsDev(t *testing.T) {
 	}
 }
 
+func TestResolvedVersionTreatsDirtyTaggedLocalBuildAsDev(t *testing.T) {
+	originalReleaseVersion := releaseVersion
+	originalReadBuildInfo := readBuildInfo
+	releaseVersion = ""
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			Main: debug.Module{Version: "v1.0.0+dirty"},
+			Settings: []debug.BuildSetting{
+				{Key: "vcs", Value: "git"},
+				{Key: "vcs.modified", Value: "true"},
+			},
+		}, true
+	}
+	t.Cleanup(func() {
+		releaseVersion = originalReleaseVersion
+		readBuildInfo = originalReadBuildInfo
+	})
+
+	if got := resolvedVersion(); got != "1.0.0 dev" {
+		t.Fatalf("expected dirty tagged local build to fall back to dev, got %q", got)
+	}
+}
+
 func TestResolvedVersionKeepsPseudoVersionWithoutVCSMarker(t *testing.T) {
 	originalReleaseVersion := releaseVersion
 	originalReadBuildInfo := readBuildInfo

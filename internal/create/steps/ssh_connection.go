@@ -83,10 +83,29 @@ func runSSHCommand(ctx *create.Context, target sshTarget, remoteDir string, scri
 func captureSSHCommand(ctx *create.Context, target sshTarget, remoteDir string, script string) (string, error) {
 	output, err := ctx.Runner.CaptureOutput("", "ssh", "-p", target.Port, target.UserHost, remoteScript(remoteDir, script))
 	if err != nil {
-		return "", fmt.Errorf("failed to connect to SSH starter host %s:%s: %w", target.UserHost, target.Port, err)
+		return "", formatSSHCommandError(target, err, output)
 	}
 
 	return strings.TrimSpace(output), nil
+}
+
+// formatSSHCommandError builds an SSH failure message and appends captured
+// command output when it is available.
+//
+// Parameters:
+// - target: parsed SSH target used for the command
+// - err: original command execution error
+// - output: captured stderr/stdout returned by the runner
+//
+// Returns:
+// - an error describing the failed SSH command, including remote output when present
+func formatSSHCommandError(target sshTarget, err error, output string) error {
+	detail := strings.TrimSpace(output)
+	if detail == "" {
+		return fmt.Errorf("SSH command failed on %s:%s: %w", target.UserHost, target.Port, err)
+	}
+
+	return fmt.Errorf("SSH command failed on %s:%s: %w\n%s", target.UserHost, target.Port, err, detail)
 }
 
 // copyRemoteFile downloads one file from the starter host into localPath.
