@@ -76,7 +76,8 @@ fi
 
 git -C "${tap_dir}" config user.name "gotcha190"
 git -C "${tap_dir}" config user.email "gotcha190@users.noreply.github.com"
-git -C "${tap_dir}" add -A -- Formula/toba.rb Casks/toba.rb
+git -C "${tap_dir}" add Formula/toba.rb
+git -C "${tap_dir}" add -A
 if git -C "${tap_dir}" diff --cached --quiet; then
 	exit 0
 fi
