@@ -46,6 +46,17 @@ Do pełnego działania potrzebne są:
 
 ## Instalacja
 
+Instalacja przez Homebrew:
+
+```bash
+brew install Gotcha190/toba/toba
+```
+
+Instalacja z GitHub Release:
+
+- pobierz odpowiednie archiwum z `https://github.com/Gotcha190/ToBA/releases`
+- rozpakuj je i dodaj binarkę `toba` do `PATH`
+
 Instalacja przez Go:
 
 ```bash
@@ -59,6 +70,11 @@ git clone git@github.com:Gotcha190/ToBA.git
 cd ToBA
 go install .
 ```
+
+Wersjonowanie binarki:
+
+- release build pokazuje `toba version: 1.0.0`
+- lokalny build z checkoutu repo pokazuje `toba version: 1.0.0 dev`
 
 ## Szybki start
 
@@ -100,6 +116,7 @@ Obsługiwane pola:
 TOBA_PHP_VERSION=
 TOBA_STARTER_REPO=
 TOBA_SSH_TARGET=
+TOBA_REMOTE_WORDPRESS_ROOT=
 ```
 
 Kolejność rozwiązywania konfiguracji:
@@ -120,11 +137,17 @@ Format `TOBA_SSH_TARGET`:
 user@host -p port
 ```
 
+`TOBA_REMOTE_WORDPRESS_ROOT` to zdalny katalog WordPressa używany przez SSH fallback, na przykład:
+
+```bash
+www/example.com
+```
+
 ## Komendy
 
 ```bash
 toba config
-toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--dry-run]
+toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run]
 toba doctor
 toba version
 ```
@@ -162,7 +185,7 @@ Jeśli folder istnieje, ale jest pusty albo niekompletny, `toba create` zakończ
 
 ### SSH mode
 
-Jeśli `./<project-name>` nie istnieje, ToBA używa `TOBA_SSH_TARGET` albo flagi `--ssh-target` i pobiera starter data z hosta zdalnego.
+Jeśli `./<project-name>` nie istnieje, ToBA używa `TOBA_SSH_TARGET` albo flagi `--ssh-target` oraz `TOBA_REMOTE_WORDPRESS_ROOT` albo flagi `--remote-wordpress-root`, a następnie pobiera starter data z hosta zdalnego.
 
 Zasady:
 
@@ -186,14 +209,15 @@ Utworzenie projektu przez SSH:
 
 ```bash
 toba config
-toba create demo --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22'
+toba create demo --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
 ```
 
 Suchy przebieg bez zapisu plików:
 
 ```bash
-toba create demo --dry-run --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22'
+toba create demo --dry-run --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
 ```
+
 
 ## Struktura repozytorium
 
