@@ -67,6 +67,13 @@ func (s *PrepareStarterDataStep) Run(ctx *create.Context) error {
 			}
 			return fmt.Errorf("SSH starter source is not configured; fill in TOBA_SSH_TARGET in %s or pass --ssh-target", globalEnvPath)
 		}
+		if strings.TrimSpace(ctx.Config.RemoteWordPressRoot) == "" {
+			globalEnvPath, pathErr := create.GlobalEnvPath()
+			if pathErr != nil {
+				return fmt.Errorf("SSH starter source is missing the remote WordPress root; set TOBA_REMOTE_WORDPRESS_ROOT in the global config or pass --remote-wordpress-root")
+			}
+			return fmt.Errorf("SSH starter source is missing the remote WordPress root; fill in TOBA_REMOTE_WORDPRESS_ROOT in %s or pass --remote-wordpress-root", globalEnvPath)
+		}
 		return prepareRemoteStarterData(ctx)
 	}
 }

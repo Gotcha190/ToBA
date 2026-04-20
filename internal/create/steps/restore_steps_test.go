@@ -79,7 +79,7 @@ func TestImportDatabaseStepWritesSQLAndRunsRewrite(t *testing.T) {
 	if got := runner.commands[0].args; len(got) < 2 || got[0] != "db-import" || got[1] != "app/database.sql" {
 		t.Fatalf("unexpected db-import args: %#v", got)
 	}
-	if got := runner.commands[1].args; len(got) < 4 || got[2] != "https://starter.tamago-dev.pl" || got[3] != "https://demo.lndo.site" {
+	if got := runner.commands[1].args; len(got) < 4 || got[2] != "https://starter.example.test" || got[3] != "https://demo.lndo.site" {
 		t.Fatalf("unexpected search-replace args: %#v", got)
 	}
 }
@@ -168,8 +168,8 @@ func newRestoreTestContext(t *testing.T) *create.Context {
 	ctx.StarterData = create.StarterData{
 		Mode: starterDataModeLocal,
 		DatabasePath: writeGzipFixture(t, baseDir, "starter-db.gz", ""+
-			"# Backup of: https://starter.tamago-dev.pl\n"+
-			"# Home URL: https://starter.tamago-dev.pl\n"+
+			"# Backup of: https://starter.example.test\n"+
+			"# Home URL: https://starter.example.test\n"+
 			"SELECT 1;\n"),
 		PluginsPaths: []string{
 			writeZipFixture(t, baseDir, "starter-plugins-a.zip", map[string]string{

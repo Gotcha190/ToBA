@@ -81,7 +81,7 @@ func Execute() {
 //
 // Usage:
 //
-//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --dry-run
+//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com' --dry-run
 func runCreate(args []string) error {
 	fs := flag.NewFlagSet("create", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -90,9 +90,10 @@ func runCreate(args []string) error {
 	fs.StringVar(&opts.PHPVersion, "php", "", "PHP version for the Lando appserver")
 	fs.StringVar(&opts.StarterRepo, "starter-repo", "", "Git repository for the starter theme")
 	fs.StringVar(&opts.SSHTarget, "ssh-target", "", "SSH target in format 'user@host -p port'")
+	fs.StringVar(&opts.RemoteWordPressRoot, "remote-wordpress-root", "", "Remote WordPress root used by SSH starter data")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "Print planned actions without writing files")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run]")
 	}
 
 	projectName := ""

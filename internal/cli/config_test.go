@@ -64,7 +64,7 @@ func TestRunConfigCreatesTemplateFromEmbeddedEnvExampleOutsideRepo(t *testing.T)
 	if err != nil {
 		t.Fatalf("failed to read global env: %v", err)
 	}
-	if string(written) != "TOBA_PHP_VERSION=\nTOBA_STARTER_REPO=\nTOBA_SSH_TARGET=\n" {
+	if string(written) != "TOBA_PHP_VERSION=\nTOBA_STARTER_REPO=\nTOBA_SSH_TARGET=\nTOBA_REMOTE_WORDPRESS_ROOT=\n" {
 		t.Fatalf("unexpected template content: %q", string(written))
 	}
 }

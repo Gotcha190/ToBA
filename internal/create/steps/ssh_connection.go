@@ -11,10 +11,6 @@ import (
 	"github.com/gotcha190/toba/internal/create"
 )
 
-const (
-	remoteWordPressRoot = "www/toba.tamago-dev.pl"
-)
-
 var (
 	sshTargetPattern = regexp.MustCompile(`^([^\s@]+@[^\s]+)\s+-p\s+([0-9]+)$`)
 )

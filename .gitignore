@@ -3,3 +3,4 @@
 /MD-Files
 .env
 .env.local
+dist/

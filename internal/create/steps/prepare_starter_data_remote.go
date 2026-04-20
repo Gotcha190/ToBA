@@ -29,6 +29,7 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 	if err != nil {
 		return err
 	}
+	remoteWordPressRoot := strings.TrimSpace(ctx.Config.RemoteWordPressRoot)
 
 	ctx.Logger.Info("No local project backup folder found; using SSH starter data")
 

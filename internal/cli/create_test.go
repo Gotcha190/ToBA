@@ -12,6 +12,7 @@ import (
 )
 
 const testStarterRepo = "git@example.com:company/starter.git"
+const testRemoteWordPressRoot = "www/example.com"
 
 type recordedCommand struct {
 	dir  string
@@ -75,7 +76,7 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 	}
 	if cmd == "ssh" && len(args) > 0 && strings.Contains(args[len(args)-1], "wp84 option get home") {
 		if r.homeURL == "" {
-			return "https://starter.tamago-dev.pl\n", nil
+			return "https://starter.example.test\n", nil
 		}
 		return r.homeURL + "\n", nil
 	}
@@ -94,10 +95,11 @@ func TestRunCreateCreatesProjectSkeletonFromSSHStarter(t *testing.T) {
 	runner := &fakeRunner{}
 
 	err := runCreateWithRunner(CreateOptions{
-		Name:        "demo",
-		PHPVersion:  "8.4",
-		StarterRepo: testStarterRepo,
-		SSHTarget:   "user@192.168.0.1 -p 22",
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
 	}, runner)
 	if err != nil {
 		t.Fatalf("RunCreate returned error: %v", err)
@@ -158,7 +160,7 @@ func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
 	}
 
 	runner := &fakeRunner{}
-	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, runner); err != nil {
+	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot}, runner); err != nil {
 		t.Fatalf("expected local project backup flow to succeed, got: %v", err)
 	}
 
@@ -194,7 +196,7 @@ func TestRunCreateFailsWhenExistingProjectFolderHasNoUpdraftBackups(t *testing.T
 		t.Fatalf("failed to prepare existing directory: %v", err)
 	}
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
+	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot}, &fakeRunner{})
 	if err == nil {
 		t.Fatal("expected RunCreate to fail for empty existing project directory")
 	}
@@ -220,7 +222,7 @@ func TestRunCreateFailsWhenExistingProjectFolderContainsProjectMarkers(t *testin
 	}
 	writeCreateTestFile(t, filepath.Join(projectRoot, ".lando.yml"), "name: demo\n")
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
+	err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot}, &fakeRunner{})
 	if err == nil {
 		t.Fatal("expected existing generated project markers to fail")
 	}
@@ -234,7 +236,7 @@ func TestRunCreateDryRunDoesNotWriteFiles(t *testing.T) {
 	withWorkingDir(t, baseDir)
 	runner := &fakeRunner{}
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22", DryRun: true}, runner)
+	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot, DryRun: true}, runner)
 	if err != nil {
 		t.Fatalf("RunCreate returned error in dry-run mode: %v", err)
 	}
@@ -253,7 +255,7 @@ func TestRunCreateReturnsRunnerError(t *testing.T) {
 	withWorkingDir(t, baseDir)
 
 	expectedErr := fmt.Errorf("lando failed")
-	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{runErr: expectedErr, failCmd: "lando"})
+	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot}, &fakeRunner{runErr: expectedErr, failCmd: "lando"})
 	if err == nil {
 		t.Fatal("expected runCreateWithRunner to return runner error")
 	}
@@ -276,7 +278,8 @@ func TestRunCreateUsesEnvConfig(t *testing.T) {
 		"TOBA_PHP_VERSION=8.4\n" +
 		"TOBA_DOMAIN=stale-from-env.lndo.site\n" +
 		"TOBA_STARTER_REPO=" + testStarterRepo + "\n" +
-		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n"
+		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n" +
+		"TOBA_REMOTE_WORDPRESS_ROOT=" + testRemoteWordPressRoot + "\n"
 	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -320,7 +323,8 @@ func TestRunCreateWritesConfigSourceToProvidedOutput(t *testing.T) {
 	env := "" +
 		"TOBA_PHP_VERSION=8.4\n" +
 		"TOBA_STARTER_REPO=" + testStarterRepo + "\n" +
-		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n"
+		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n" +
+		"TOBA_REMOTE_WORDPRESS_ROOT=" + testRemoteWordPressRoot + "\n"
 	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
@@ -337,6 +341,34 @@ func TestRunCreateWritesConfigSourceToProvidedOutput(t *testing.T) {
 	}
 }
 
+func TestRunCreateRemoteWordPressRootFlagOverridesEnv(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{}
+
+	globalEnvPath, err := create.GlobalEnvPath()
+	if err != nil {
+		t.Fatalf("GlobalEnvPath returned error: %v", err)
+	}
+
+	env := "" +
+		"TOBA_STARTER_REPO=" + testStarterRepo + "\n" +
+		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n" +
+		"TOBA_REMOTE_WORDPRESS_ROOT=www/stale-from-env.example\n"
+	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(globalEnvPath, []byte(env), 0644); err != nil {
+		t.Fatalf("failed to write global env file: %v", err)
+	}
+
+	if err := runCreateWithRunner(CreateOptions{Name: "demo", RemoteWordPressRoot: testRemoteWordPressRoot}, runner); err != nil {
+		t.Fatalf("runCreateWithRunner returned error: %v", err)
+	}
+
+	assertHasCommand(t, runner.commands, "ssh", []string{"-p", "22", "user@192.168.0.1", "dynamic:home"})
+}
+
 func TestRunCreateNormalizesNameAndPrintsFinalSiteURL(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
@@ -345,9 +377,10 @@ func TestRunCreateNormalizesNameAndPrintsFinalSiteURL(t *testing.T) {
 
 	err := runCreateWithIO(
 		CreateOptions{
-			Name:        "Test",
-			StarterRepo: testStarterRepo,
-			SSHTarget:   "user@192.168.0.1 -p 22",
+			Name:                "Test",
+			StarterRepo:         testStarterRepo,
+			SSHTarget:           "user@192.168.0.1 -p 22",
+			RemoteWordPressRoot: testRemoteWordPressRoot,
 		},
 		runner,
 		strings.NewReader("n\n"),
@@ -390,9 +423,10 @@ func TestRunCreateDoesNotRunAcornOptimizeClearForSSHStarter(t *testing.T) {
 	runner := &fakeRunner{}
 
 	err := runCreateWithRunner(CreateOptions{
-		Name:        "demo",
-		StarterRepo: testStarterRepo,
-		SSHTarget:   "user@192.168.0.1 -p 22",
+		Name:                "demo",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
 	}, runner)
 	if err != nil {
 		t.Fatalf("runCreateWithRunner returned error: %v", err)
@@ -429,7 +463,7 @@ func TestRunCreateDoesNotRunAcornOptimizeClearForLocalBackup(t *testing.T) {
 	}
 
 	runner := &fakeRunner{}
-	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, runner); err != nil {
+	if err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot}, runner); err != nil {
 		t.Fatalf("expected local project backup flow to succeed, got: %v", err)
 	}
 
@@ -443,7 +477,7 @@ func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
 	input := strings.NewReader("y\n")
 	output := &strings.Builder{}
 	err := runCreateWithIO(
-		CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"},
+		CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot},
 		&fakeRunner{runErrByCommand: map[string]error{"lando start": fmt.Errorf("lando failed")}},
 		input,
 		output,
@@ -468,7 +502,7 @@ func TestRunCreateKeepsProjectDirWhenLandoDestroyFails(t *testing.T) {
 	input := strings.NewReader("y\n")
 	output := &strings.Builder{}
 	err := runCreateWithIO(
-		CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"},
+		CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot},
 		&fakeRunner{runErrByCommand: map[string]error{
 			"lando start":      fmt.Errorf("lando failed"),
 			"lando destroy -y": fmt.Errorf("destroy failed"),
@@ -509,7 +543,7 @@ func TestRunCreateFailsWhenStarterRepoIsMissing(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
+	err := runCreateWithRunner(CreateOptions{Name: "demo", SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot}, &fakeRunner{})
 	if err == nil {
 		t.Fatal("expected missing starter repo error")
 	}
@@ -542,11 +576,35 @@ func TestRunCreateFailsWhenSSHTargetIsMissing(t *testing.T) {
 	}
 }
 
+func TestRunCreateFailsWhenRemoteWordPressRootIsMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	globalEnvPath, err := create.GlobalEnvPath()
+	if err != nil {
+		t.Fatalf("GlobalEnvPath returned error: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(globalEnvPath, []byte("TOBA_STARTER_REPO="+testStarterRepo+"\nTOBA_SSH_TARGET=user@192.168.0.1 -p 22\n"), 0644); err != nil {
+		t.Fatalf("failed to write global env file: %v", err)
+	}
+
+	err = runCreateWithRunner(CreateOptions{Name: "demo"}, &fakeRunner{})
+	if err == nil {
+		t.Fatal("expected missing remote WordPress root error")
+	}
+	if !strings.Contains(err.Error(), "TOBA_REMOTE_WORDPRESS_ROOT") || !strings.Contains(err.Error(), "--remote-wordpress-root") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunCreateFailsForProjectNameWithSpaces(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
 
-	err := runCreateWithRunner(CreateOptions{Name: "demo project", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22"}, &fakeRunner{})
+	err := runCreateWithRunner(CreateOptions{Name: "demo project", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot}, &fakeRunner{})
 	if err == nil {
 		t.Fatal("expected project name validation error")
 	}
@@ -673,9 +731,9 @@ func argsMatch(actual []string, expected []string) bool {
 func matchesDynamicArg(actual string, pattern string) bool {
 	switch pattern {
 	case "home":
-		return strings.HasPrefix(actual, "cd 'www/toba.tamago-dev.pl' && wp84 option get home")
+		return strings.HasPrefix(actual, "cd '"+testRemoteWordPressRoot+"' && wp84 option get home")
 	case "remote-sql":
-		return strings.HasPrefix(actual, "user@192.168.0.1:www/toba.tamago-dev.pl/") && strings.HasSuffix(actual, ".sql")
+		return strings.HasPrefix(actual, "user@192.168.0.1:"+testRemoteWordPressRoot+"/") && strings.HasSuffix(actual, ".sql")
 	case "local-sql":
 		return strings.HasSuffix(actual, ".sql")
 	default:
@@ -720,7 +778,7 @@ func withWorkingDir(t *testing.T, dir string) {
 func materializeDownloadedFixture(remoteSource string, localTarget string) error {
 	switch {
 	case strings.HasSuffix(remoteSource, ".sql"):
-		return os.WriteFile(localTarget, []byte("# Home URL: https://starter.tamago-dev.pl\nSELECT 1;\n"), 0644)
+		return os.WriteFile(localTarget, []byte("# Home URL: https://starter.example.test\nSELECT 1;\n"), 0644)
 	case strings.HasSuffix(remoteSource, "-plugins.zip"):
 		return writeZipFixture(localTarget, map[string]string{
 			"plugins/advanced-custom-fields-pro/acf.php": "<?php\n",

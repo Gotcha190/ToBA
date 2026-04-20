@@ -19,7 +19,8 @@ func TestLoadEnvConfig(t *testing.T) {
 		"TOBA_PHP_VERSION=8.4\n" +
 		"TOBA_DOMAIN=demo.lndo.site\n" +
 		"TOBA_STARTER_REPO=git@example.com:company/starter.git\n" +
-		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n"
+		"TOBA_SSH_TARGET=user@192.168.0.1 -p 22\n" +
+		"TOBA_REMOTE_WORDPRESS_ROOT=www/example.com\n"
 
 	if err := os.MkdirAll(filepath.Dir(globalEnvPath), 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
@@ -33,7 +34,7 @@ func TestLoadEnvConfig(t *testing.T) {
 		t.Fatalf("LoadEnvConfig returned error: %v", err)
 	}
 
-	if config.Name != "" || config.PHPVersion != "8.4" || config.Domain != "" || config.StarterRepo != "git@example.com:company/starter.git" || config.SSHTarget != "user@192.168.0.1 -p 22" {
+	if config.Name != "" || config.PHPVersion != "8.4" || config.Domain != "" || config.StarterRepo != "git@example.com:company/starter.git" || config.SSHTarget != "user@192.168.0.1 -p 22" || config.RemoteWordPressRoot != "www/example.com" {
 		t.Fatalf("unexpected env config: %#v", config)
 	}
 }
@@ -138,7 +139,7 @@ func TestResolveGlobalEnvInitializationUsesEmbeddedTemplateOutsideRepo(t *testin
 		t.Fatal("expected embedded .env.example to be treated as template")
 	}
 
-	if string(content) != "TOBA_PHP_VERSION=\nTOBA_STARTER_REPO=\nTOBA_SSH_TARGET=\n" {
+	if string(content) != "TOBA_PHP_VERSION=\nTOBA_STARTER_REPO=\nTOBA_SSH_TARGET=\nTOBA_REMOTE_WORDPRESS_ROOT=\n" {
 		t.Fatalf("unexpected embedded template content: %q", string(content))
 	}
 	if targetPath != filepath.Join(configHome, globalConfigDirName, envFileName) {

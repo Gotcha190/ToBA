@@ -59,10 +59,11 @@ func ResolveEnvConfig() (ProjectConfig, string, bool, error) {
 	}
 
 	return ProjectConfig{
-		PHPVersion:  values["TOBA_PHP_VERSION"],
-		Database:    values["TOBA_DATABASE"],
-		StarterRepo: values["TOBA_STARTER_REPO"],
-		SSHTarget:   values["TOBA_SSH_TARGET"],
+		PHPVersion:          values["TOBA_PHP_VERSION"],
+		Database:            values["TOBA_DATABASE"],
+		StarterRepo:         values["TOBA_STARTER_REPO"],
+		SSHTarget:           values["TOBA_SSH_TARGET"],
+		RemoteWordPressRoot: values["TOBA_REMOTE_WORDPRESS_ROOT"],
 	}, envPath, false, nil
 }
 

@@ -12,11 +12,12 @@ import (
 )
 
 type CreateOptions struct {
-	Name        string
-	PHPVersion  string
-	StarterRepo string
-	SSHTarget   string
-	DryRun      bool
+	Name                string
+	PHPVersion          string
+	StarterRepo         string
+	SSHTarget           string
+	RemoteWordPressRoot string
+	DryRun              bool
 }
 
 // RunCreate runs the full ToBA project creation pipeline.
@@ -34,7 +35,7 @@ type CreateOptions struct {
 //
 // Usage:
 //
-//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22'
+//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
 func RunCreate(opts CreateOptions) error {
 	return runCreateWithIO(opts, create.ExecRunner{}, os.Stdin, os.Stdout)
 }
@@ -95,6 +96,9 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	}
 	if opts.SSHTarget != "" {
 		config.SSHTarget = opts.SSHTarget
+	}
+	if opts.RemoteWordPressRoot != "" {
+		config.RemoteWordPressRoot = opts.RemoteWordPressRoot
 	}
 	config.DryRun = opts.DryRun
 

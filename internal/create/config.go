@@ -9,13 +9,14 @@ const DefaultPHPVersion = "8.4"
 const DefaultDatabaseName = "wordpress"
 
 type ProjectConfig struct {
-	Name        string
-	PHPVersion  string
-	Domain      string
-	Database    string
-	StarterRepo string
-	SSHTarget   string
-	DryRun      bool
+	Name                string
+	PHPVersion          string
+	Domain              string
+	Database            string
+	StarterRepo         string
+	SSHTarget           string
+	RemoteWordPressRoot string
+	DryRun              bool
 }
 
 // Normalize validates the project name and fills the derived defaults required
@@ -48,6 +49,7 @@ func (c *ProjectConfig) Normalize() error {
 	if strings.TrimSpace(c.PHPVersion) == "" {
 		c.PHPVersion = DefaultPHPVersion
 	}
+	c.RemoteWordPressRoot = strings.TrimSpace(c.RemoteWordPressRoot)
 
 	c.Domain = fmt.Sprintf("%s.lndo.site", strings.ReplaceAll(c.Name, "_", "-"))
 

@@ -115,10 +115,11 @@ func TestPrepareStarterDataIgnoresCategorizedLocalProjectBackups(t *testing.T) {
 
 func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testing.T) {
 	logger := &starterTestLogger{}
-	runner := &starterTestRunner{captureOutput: "https://starter.tamago-dev.pl\n"}
+	runner := &starterTestRunner{captureOutput: "https://starter.example.test\n"}
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
-		Name:      "demo",
-		SSHTarget: "user@192.168.0.1 -p 22",
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
 	}, logger, runner)
 
 	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
@@ -128,7 +129,7 @@ func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testin
 	if ctx.StarterData.Mode != starterDataModeRemote {
 		t.Fatalf("unexpected starter mode: %q", ctx.StarterData.Mode)
 	}
-	if ctx.StarterData.SourceURL != "https://starter.tamago-dev.pl" {
+	if ctx.StarterData.SourceURL != "https://starter.example.test" {
 		t.Fatalf("unexpected source URL: %q", ctx.StarterData.SourceURL)
 	}
 	for _, path := range append([]string{ctx.StarterData.DatabasePath}, append(ctx.StarterData.PluginsPaths, ctx.StarterData.UploadsPaths...)...) {
@@ -209,7 +210,7 @@ func TestPrepareStarterDataRejectsMultipleLocalDatabases(t *testing.T) {
 }
 
 func TestPrepareStarterDataRejectsInvalidSSHTarget(t *testing.T) {
-	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo", SSHTarget: "bad-target"}, &starterTestLogger{}, &starterTestRunner{})
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{Name: "demo", SSHTarget: "bad-target", RemoteWordPressRoot: "www/example.com"}, &starterTestLogger{}, &starterTestRunner{})
 	err := NewPrepareStarterDataStep().Run(ctx)
 	if err == nil {
 		t.Fatal("expected invalid ssh target error")
@@ -219,13 +220,29 @@ func TestPrepareStarterDataRejectsInvalidSSHTarget(t *testing.T) {
 	}
 }
 
-func TestPrepareStarterDataWarnsWhenRemoteCleanupFails(t *testing.T) {
-	logger := &starterTestLogger{}
+func TestPrepareStarterDataRejectsMissingRemoteWordPressRoot(t *testing.T) {
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
 		Name:      "demo",
 		SSHTarget: "user@192.168.0.1 -p 22",
+	}, &starterTestLogger{}, &starterTestRunner{})
+
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected missing remote WordPress root error")
+	}
+	if !strings.Contains(err.Error(), "TOBA_REMOTE_WORDPRESS_ROOT") || !strings.Contains(err.Error(), "--remote-wordpress-root") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPrepareStarterDataWarnsWhenRemoteCleanupFails(t *testing.T) {
+	logger := &starterTestLogger{}
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
 	}, logger, &starterTestRunner{
-		captureOutput:   "https://starter.tamago-dev.pl\n",
+		captureOutput:   "https://starter.example.test\n",
 		cleanupRunError: os.ErrPermission,
 	})
 
@@ -239,8 +256,9 @@ func TestPrepareStarterDataWarnsWhenRemoteCleanupFails(t *testing.T) {
 
 func TestPrepareStarterDataWrapsSSHConnectionErrors(t *testing.T) {
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
-		Name:      "demo",
-		SSHTarget: "user@192.168.0.1 -p 22",
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
 	}, &starterTestLogger{}, &starterTestRunner{
 		captureErr: os.ErrDeadlineExceeded,
 	})
@@ -256,13 +274,14 @@ func TestPrepareStarterDataWrapsSSHConnectionErrors(t *testing.T) {
 
 func TestPrepareStarterDataCleansRemoteArtifactsWhenRemoteZipFails(t *testing.T) {
 	runner := &starterTestRunner{
-		captureOutput:  "https://starter.tamago-dev.pl\n",
+		captureOutput:  "https://starter.example.test\n",
 		runErrContains: "zip -rq ../",
 		runErr:         os.ErrInvalid,
 	}
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
-		Name:      "demo",
-		SSHTarget: "user@192.168.0.1 -p 22",
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
 	}, &starterTestLogger{}, runner)
 
 	err := NewPrepareStarterDataStep().Run(ctx)
@@ -303,7 +322,7 @@ func writeStarterFixture(remoteSource string, localTarget string) error {
 
 	switch {
 	case strings.HasSuffix(remoteSource, ".sql"):
-		return os.WriteFile(localTarget, []byte("# Home URL: https://starter.tamago-dev.pl\nSELECT 1;\n"), 0644)
+		return os.WriteFile(localTarget, []byte("# Home URL: https://starter.example.test\nSELECT 1;\n"), 0644)
 	case strings.HasSuffix(remoteSource, "-plugins.zip"):
 		return os.WriteFile(localTarget, zippedBytes(nil, map[string]string{
 			"plugins/example/plugin.php": "<?php\n",
