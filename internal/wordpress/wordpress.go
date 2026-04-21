@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -22,7 +23,7 @@ const (
 	defaultAdminUser     = "tamago"
 	defaultAdminEmail    = "email@email.pl"
 	defaultAdminPassword = "tamago"
-	defaultAdminID       = "1"
+	DefaultTablePrefix   = "wp_"
 )
 
 // Install downloads WordPress, creates wp-config.php, and performs the initial
@@ -58,6 +59,10 @@ func Install(runner create.CommandRunner, projectDir string, config create.Proje
 		"--dbcharset="+defaultDBCharset,
 	); err != nil {
 		return fmt.Errorf("wp-config creation failed: %w", err)
+	}
+
+	if err := includeProjectConfigIfPresent(projectDir); err != nil {
+		return fmt.Errorf("wp-config project config include failed: %w", err)
 	}
 
 	if err := runner.Run(
@@ -168,6 +173,36 @@ func BackupSourceURL(sqlPath string) (string, error) {
 	return validateURL(backupURL)
 }
 
+// BackupTablePrefix reads the original WordPress table prefix from SQL backup
+// metadata, falling back to the default prefix when the dump does not expose
+// one.
+func BackupTablePrefix(sqlPath string) (string, error) {
+	file, err := os.Open(sqlPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		switch {
+		case strings.HasPrefix(line, "# Table prefix:"):
+			return normalizeTablePrefix(strings.TrimSpace(strings.TrimPrefix(line, "# Table prefix:")))
+		case strings.HasPrefix(line, "# Table: `"), strings.HasPrefix(line, "CREATE TABLE `"), strings.HasPrefix(line, "DROP TABLE IF EXISTS `"):
+			tableName := tableNameFromLine(line)
+			if prefix, ok := tablePrefixFromTableName(tableName); ok {
+				return prefix, nil
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+
+	return DefaultTablePrefix, nil
+}
+
 // SearchReplace rewrites WordPress database URLs from sourceURL to targetURL.
 //
 // Parameters:
@@ -182,47 +217,223 @@ func BackupSourceURL(sqlPath string) (string, error) {
 // Side effects:
 // - runs `lando wp search-replace` in the project directory
 func SearchReplace(runner create.CommandRunner, projectDir string, sourceURL string, targetURL string) error {
+	return replaceInDatabase(runner, projectDir, sourceURL, targetURL, "search-replace failed")
+}
+
+// SetConfigTablePrefix updates the wp-config.php table prefix assignment.
+func SetConfigTablePrefix(wpConfigPath string, prefix string) error {
+	prefix, err := normalizeTablePrefix(prefix)
+	if err != nil {
+		return err
+	}
+
+	content, err := os.ReadFile(wpConfigPath)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(wpConfigPath)
+	if err != nil {
+		return err
+	}
+
+	re := regexp.MustCompile(`(?m)^\$table_prefix\s*=\s*'[^']*';`)
+	updated := re.ReplaceAllLiteralString(string(content), "$table_prefix = '"+prefix+"';")
+	if updated == string(content) {
+		return fmt.Errorf("table prefix assignment not found in %s", wpConfigPath)
+	}
+
+	return os.WriteFile(wpConfigPath, []byte(updated), info.Mode().Perm())
+}
+
+func includeProjectConfigIfPresent(projectDir string) error {
+	projectConfigPath := filepath.Join(projectDir, "config.php")
+	if _, err := os.Stat(projectConfigPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	return setProjectConfigInclude(filepath.Join(projectDir, "app", "wp-config.php"))
+}
+
+func setProjectConfigInclude(wpConfigPath string) error {
+	content, err := os.ReadFile(wpConfigPath)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(wpConfigPath)
+	if err != nil {
+		return err
+	}
+
+	includeBlock := "" +
+		"if ( file_exists( dirname( __DIR__ ) . '/config.php' ) ) {\n" +
+		"\trequire_once dirname( __DIR__ ) . '/config.php';\n" +
+		"}\n\n"
+	if strings.Contains(string(content), "dirname( __DIR__ ) . '/config.php'") {
+		return nil
+	}
+
+	marker := "/* Add any custom values between this line and the \"stop editing\" line. */"
+	index := strings.Index(string(content), marker)
+	if index == -1 {
+		return fmt.Errorf("custom values marker not found in %s", wpConfigPath)
+	}
+	index += len(marker)
+
+	updated := string(content[:index]) + "\n\n" + includeBlock + string(content[index:])
+	return os.WriteFile(wpConfigPath, []byte(updated), info.Mode().Perm())
+}
+
+func replaceInDatabase(runner create.CommandRunner, projectDir string, search string, replace string, errPrefix string) error {
 	if err := runner.Run(
 		projectDir,
 		"lando",
 		"wp",
 		"search-replace",
-		sourceURL,
-		targetURL,
+		search,
+		replace,
 		"--all-tables-with-prefix",
 		"--skip-columns=guid",
 	); err != nil {
-		return fmt.Errorf("search-replace failed: %w", err)
+		return fmt.Errorf("%s: %w", errPrefix, err)
 	}
 
 	return nil
 }
 
-// ResetAdminPassword resets the default local WordPress admin password.
+func normalizeTablePrefix(prefix string) (string, error) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return "", fmt.Errorf("table prefix is empty")
+	}
+	for _, r := range prefix {
+		if r != '_' && (r < '0' || r > '9') && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') {
+			return "", fmt.Errorf("invalid table prefix: %s", prefix)
+		}
+	}
+
+	return prefix, nil
+}
+
+func tableNameFromLine(line string) string {
+	for _, marker := range []string{"# Table: `", "CREATE TABLE `", "DROP TABLE IF EXISTS `"} {
+		if !strings.HasPrefix(line, marker) {
+			continue
+		}
+		name := strings.TrimPrefix(line, marker)
+		end := strings.IndexByte(name, '`')
+		if end <= 0 {
+			return ""
+		}
+		return name[:end]
+	}
+
+	return ""
+}
+
+func tablePrefixFromTableName(tableName string) (string, bool) {
+	for _, suffix := range []string{
+		"options",
+		"users",
+		"usermeta",
+		"posts",
+		"postmeta",
+		"terms",
+		"term_taxonomy",
+		"term_relationships",
+		"termmeta",
+		"commentmeta",
+		"comments",
+		"links",
+	} {
+		if !strings.HasSuffix(tableName, suffix) || len(tableName) <= len(suffix) {
+			continue
+		}
+
+		prefix, err := normalizeTablePrefix(strings.TrimSuffix(tableName, suffix))
+		if err == nil {
+			return prefix, true
+		}
+	}
+
+	return "", false
+}
+
+// ResetAdminPassword resets the default local WordPress admin password, or
+// creates the default admin account when the imported database does not
+// contain it.
 //
 // Parameters:
 // - runner: command runner used to launch WP-CLI
 // - projectDir: local project root
 //
 // Returns:
-// - an error when the password reset command fails
+// - an error when user lookup, creation, or password reset fails
 //
 // Side effects:
-// - runs `lando wp user update 1 --user_pass=...`
+// - runs `lando wp user get tamago --field=ID`
+// - may run `lando wp user create tamago ... --role=administrator --user_pass=...`
+// - may run `lando wp user update tamago --user_pass=...`
 func ResetAdminPassword(runner create.CommandRunner, projectDir string) error {
+	output, err := runner.CaptureOutput(
+		projectDir,
+		"lando",
+		"wp",
+		"user",
+		"get",
+		defaultAdminUser,
+		"--field=ID",
+	)
+	if err != nil {
+		if !isMissingUserError(output) {
+			return fmt.Errorf("admin user lookup failed: %w", err)
+		}
+
+		if err := runner.Run(
+			projectDir,
+			"lando",
+			"wp",
+			"user",
+			"create",
+			defaultAdminUser,
+			defaultAdminEmail,
+			"--role=administrator",
+			"--user_pass="+defaultAdminPassword,
+			"--display_name="+defaultAdminUser,
+		); err != nil {
+			return fmt.Errorf("admin user creation failed: %w", err)
+		}
+
+		return nil
+	}
+
+	if strings.TrimSpace(output) == "" {
+		return fmt.Errorf("admin user lookup failed: empty response for %s", defaultAdminUser)
+	}
+
 	if err := runner.Run(
 		projectDir,
 		"lando",
 		"wp",
 		"user",
 		"update",
-		defaultAdminID,
+		defaultAdminUser,
 		"--user_pass="+defaultAdminPassword,
 	); err != nil {
 		return fmt.Errorf("admin password reset failed: %w", err)
 	}
 
 	return nil
+}
+
+func isMissingUserError(output string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(output))
+	return strings.Contains(normalized, "invalid user id, email or login") ||
+		strings.Contains(normalized, "no valid users found")
 }
 
 // ActivateTheme activates themeName in the local WordPress installation.
@@ -305,17 +516,51 @@ func FlushRewriteRules(runner create.CommandRunner, projectDir string) error {
 // Side effects:
 // - runs several `lando wp acorn ...` commands in sequence
 func RefreshThemeCaches(runner create.CommandRunner, projectDir string) error {
-	for _, args := range [][]string{
-		{"wp", "acorn", "optimize"},
-		{"wp", "acorn", "cache:clear"},
-		{"wp", "acorn", "acf:cache"},
-	} {
+	acornList, err := runner.CaptureOutput(projectDir, "lando", "wp", "acorn", "list")
+	if err != nil {
+		return fmt.Errorf("theme cache command discovery failed: %w", err)
+	}
+
+	var commands [][]string
+	switch {
+	case acornCommandAvailable(acornList, "cache:clear"):
+		commands = append(commands, []string{"wp", "acorn", "optimize"})
+		commands = append(commands, []string{"wp", "acorn", "cache:clear"})
+	case acornCommandAvailable(acornList, "optimize:clear"):
+		commands = append(commands, []string{"wp", "acorn", "optimize:clear"})
+	case acornCommandAvailable(acornList, "config:clear"):
+		commands = append(commands, []string{"wp", "acorn", "config:clear"})
+	default:
+		return fmt.Errorf("theme cache refresh failed: no supported Acorn cache clear command found")
+	}
+
+	if acornCommandAvailable(acornList, "acf:cache") {
+		commands = append(commands, []string{"wp", "acorn", "acf:cache"})
+	}
+
+	for _, args := range commands {
+		commandName := args[len(args)-1]
+		if !acornCommandAvailable(acornList, commandName) {
+			continue
+		}
+
 		if err := runner.Run(projectDir, "lando", args...); err != nil {
 			return fmt.Errorf("theme cache refresh failed for %s: %w", strings.Join(args, " "), err)
 		}
 	}
 
 	return nil
+}
+
+func acornCommandAvailable(listOutput string, command string) bool {
+	for _, line := range strings.Split(listOutput, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) > 0 && fields[0] == command {
+			return true
+		}
+	}
+
+	return false
 }
 
 // LocalHTTPSURL normalizes a domain or URL string into an HTTPS site URL.

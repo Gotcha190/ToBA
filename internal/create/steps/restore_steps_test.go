@@ -84,6 +84,40 @@ func TestImportDatabaseStepWritesSQLAndRunsRewrite(t *testing.T) {
 	}
 }
 
+func TestImportDatabaseStepUpdatesConfigForCustomPrefix(t *testing.T) {
+	runner := &recordingRunner{}
+	ctx := newRestoreTestContext(t)
+	ctx.Runner = runner
+	ctx.Config.Domain = "demo.lndo.site"
+	ctx.StarterData.DatabasePath = writeGzipFixture(t, ctx.Paths.Root, "starter-db-custom.gz", ""+
+		"# Backup of: https://starter.example.test\n"+
+		"# Home URL: https://starter.example.test\n"+
+		"# Table prefix: txxbt_\n"+
+		"CREATE TABLE `txxbt_options` (\n"+
+		"  `option_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT\n"+
+		");\n")
+
+	wpConfigPath := filepath.Join(ctx.Paths.AppDir, "wp-config.php")
+	if err := os.WriteFile(wpConfigPath, []byte("<?php\n$table_prefix = 'wp_';\n"), 0644); err != nil {
+		t.Fatalf("failed to write wp-config.php: %v", err)
+	}
+
+	if err := NewImportDatabaseStep().Run(ctx); err != nil {
+		t.Fatalf("ImportDatabaseStep returned error: %v", err)
+	}
+
+	updated, err := os.ReadFile(wpConfigPath)
+	if err != nil {
+		t.Fatalf("failed to read wp-config.php: %v", err)
+	}
+	if !bytes.Contains(updated, []byte("$table_prefix = 'txxbt_';")) {
+		t.Fatalf("expected custom table prefix in wp-config.php, got:\n%s", string(updated))
+	}
+	if len(runner.commands) != 2 {
+		t.Fatalf("expected 2 commands, got %d", len(runner.commands))
+	}
+}
+
 func TestClearImportedCachesStepRemovesCacheDirAndRunsFlushCommands(t *testing.T) {
 	runner := &recordingRunner{}
 	ctx := newRestoreTestContext(t)

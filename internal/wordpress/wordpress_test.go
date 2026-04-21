@@ -18,9 +18,10 @@ type recordedCommand struct {
 }
 
 type fakeRunner struct {
-	commands []recordedCommand
-	err      error
-	outputs  map[string]string
+	commands    []recordedCommand
+	err         error
+	outputs     map[string]string
+	captureErrs map[string]error
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
@@ -38,6 +39,11 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	if r.captureErrs != nil {
+		if err, ok := r.captureErrs[cmd+" "+strings.Join(args, " ")]; ok {
+			return r.outputs[cmd+" "+strings.Join(args, " ")], err
+		}
+	}
 	if r.err != nil {
 		return "", r.err
 	}
@@ -134,6 +140,130 @@ func TestBackupSourceURLPrefersHomeURL(t *testing.T) {
 	}
 }
 
+func TestBackupTablePrefixPrefersMetadata(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "database.sql")
+	content := "" +
+		"# Table prefix: txxbt_\n" +
+		"CREATE TABLE `txxbt_options` (\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write SQL file: %v", err)
+	}
+
+	prefix, err := BackupTablePrefix(path)
+	if err != nil {
+		t.Fatalf("BackupTablePrefix returned error: %v", err)
+	}
+	if prefix != "txxbt_" {
+		t.Fatalf("unexpected table prefix: %q", prefix)
+	}
+}
+
+func TestBackupTablePrefixFallsBackToDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "database.sql")
+	if err := os.WriteFile(path, []byte("SELECT 1;\n"), 0644); err != nil {
+		t.Fatalf("failed to write SQL file: %v", err)
+	}
+
+	prefix, err := BackupTablePrefix(path)
+	if err != nil {
+		t.Fatalf("BackupTablePrefix returned error: %v", err)
+	}
+	if prefix != DefaultTablePrefix {
+		t.Fatalf("unexpected table prefix: %q", prefix)
+	}
+}
+
+func TestSetConfigTablePrefixUpdatesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wp-config.php")
+	content := "<?php\n$table_prefix = 'wp_';\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write wp-config: %v", err)
+	}
+
+	if err := SetConfigTablePrefix(path, "txxbt_"); err != nil {
+		t.Fatalf("SetConfigTablePrefix returned error: %v", err)
+	}
+
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read wp-config: %v", err)
+	}
+	if !strings.Contains(string(updated), "$table_prefix = 'txxbt_';") {
+		t.Fatalf("expected updated table prefix, got:\n%s", string(updated))
+	}
+}
+
+func TestSetProjectConfigIncludeUpdatesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wp-config.php")
+	content := "" +
+		"<?php\n" +
+		"/* Add any custom values between this line and the \"stop editing\" line. */\n\n" +
+		"if ( ! defined( 'WP_DEBUG' ) ) {\n" +
+		"\tdefine( 'WP_DEBUG', false );\n" +
+		"}\n\n" +
+		"/** Sets up WordPress vars and included files. */\n" +
+		"require_once ABSPATH . 'wp-settings.php';\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write wp-config: %v", err)
+	}
+
+	if err := setProjectConfigInclude(path); err != nil {
+		t.Fatalf("setProjectConfigInclude returned error: %v", err)
+	}
+
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read wp-config: %v", err)
+	}
+	if !strings.Contains(string(updated), "require_once dirname( __DIR__ ) . '/config.php';") {
+		t.Fatalf("expected config include, got:\n%s", string(updated))
+	}
+	if strings.Index(string(updated), "require_once dirname( __DIR__ ) . '/config.php';") > strings.Index(string(updated), "define( 'WP_DEBUG', false );") {
+		t.Fatalf("expected config include before WP_DEBUG default, got:\n%s", string(updated))
+	}
+}
+
+func TestInstallIncludesProjectConfigWhenPresent(t *testing.T) {
+	dir := t.TempDir()
+	runner := &fakeRunner{}
+	config := create.ProjectConfig{
+		Name:   "my-project",
+		Domain: "my-project.lndo.site",
+	}
+
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0755); err != nil {
+		t.Fatalf("failed to create app dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.php"), []byte("<?php\n"), 0644); err != nil {
+		t.Fatalf("failed to write config.php: %v", err)
+	}
+	wpConfigPath := filepath.Join(dir, "app", "wp-config.php")
+	wpConfig := "" +
+		"<?php\n" +
+		"/* Add any custom values between this line and the \"stop editing\" line. */\n\n" +
+		"/** Sets up WordPress vars and included files. */\n" +
+		"require_once ABSPATH . 'wp-settings.php';\n"
+	if err := os.WriteFile(wpConfigPath, []byte(wpConfig), 0644); err != nil {
+		t.Fatalf("failed to write wp-config.php: %v", err)
+	}
+
+	if err := Install(runner, dir, config); err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+
+	updated, err := os.ReadFile(wpConfigPath)
+	if err != nil {
+		t.Fatalf("failed to read wp-config.php: %v", err)
+	}
+	if !strings.Contains(string(updated), "require_once dirname( __DIR__ ) . '/config.php';") {
+		t.Fatalf("expected config include, got:\n%s", string(updated))
+	}
+}
+
 func TestSearchReplaceRunsExpectedCommand(t *testing.T) {
 	runner := &fakeRunner{}
 
@@ -162,7 +292,11 @@ func TestSearchReplaceRunsExpectedCommand(t *testing.T) {
 }
 
 func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"lando wp user get tamago --field=ID": "16\n",
+		},
+	}
 
 	if err := ResetAdminPassword(runner, "/tmp/demo"); err != nil {
 		t.Fatalf("ResetAdminPassword returned error: %v", err)
@@ -172,7 +306,44 @@ func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
-			args: []string{"wp", "user", "update", "1", "--user_pass=tamago"},
+			args: []string{"wp", "user", "get", "tamago", "--field=ID"},
+		},
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "user", "update", "tamago", "--user_pass=tamago"},
+		},
+	}
+
+	if !reflect.DeepEqual(runner.commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	}
+}
+
+func TestResetAdminPasswordCreatesTamagoWhenMissing(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"lando wp user get tamago --field=ID": "Error: Invalid user ID, email or login: 'tamago'\n",
+		},
+		captureErrs: map[string]error{
+			"lando wp user get tamago --field=ID": errors.New("missing user"),
+		},
+	}
+
+	if err := ResetAdminPassword(runner, "/tmp/demo"); err != nil {
+		t.Fatalf("ResetAdminPassword returned error: %v", err)
+	}
+
+	expected := []recordedCommand{
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "user", "get", "tamago", "--field=ID"},
+		},
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "user", "create", "tamago", "email@email.pl", "--role=administrator", "--user_pass=tamago", "--display_name=tamago"},
 		},
 	}
 
@@ -255,13 +426,22 @@ func TestFlushRewriteRulesRunsExpectedCommand(t *testing.T) {
 }
 
 func TestRefreshThemeCachesRunsExpectedCommands(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"lando wp acorn list": "  optimize         Cache the framework bootstrap files\n  cache:clear      Flush the application cache\n  acf:cache        Cache ACF assets\n",
+		},
+	}
 
 	if err := RefreshThemeCaches(runner, "/tmp/demo"); err != nil {
 		t.Fatalf("RefreshThemeCaches returned error: %v", err)
 	}
 
 	expected := []recordedCommand{
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "list"},
+		},
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
@@ -276,6 +456,64 @@ func TestRefreshThemeCachesRunsExpectedCommands(t *testing.T) {
 			dir:  "/tmp/demo",
 			cmd:  "lando",
 			args: []string{"wp", "acorn", "acf:cache"},
+		},
+	}
+
+	if !reflect.DeepEqual(runner.commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	}
+}
+
+func TestRefreshThemeCachesSkipsUnavailableCommands(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"lando wp acorn list": "  optimize:clear   Remove the cached bootstrap files\n",
+		},
+	}
+
+	if err := RefreshThemeCaches(runner, "/tmp/demo"); err != nil {
+		t.Fatalf("RefreshThemeCaches returned error: %v", err)
+	}
+
+	expected := []recordedCommand{
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "list"},
+		},
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "optimize:clear"},
+		},
+	}
+
+	if !reflect.DeepEqual(runner.commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	}
+}
+
+func TestRefreshThemeCachesFallsBackToConfigClear(t *testing.T) {
+	runner := &fakeRunner{
+		outputs: map[string]string{
+			"lando wp acorn list": "  config:clear     Remove the configuration cache file\n",
+		},
+	}
+
+	if err := RefreshThemeCaches(runner, "/tmp/demo"); err != nil {
+		t.Fatalf("RefreshThemeCaches returned error: %v", err)
+	}
+
+	expected := []recordedCommand{
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "list"},
+		},
+		{
+			dir:  "/tmp/demo",
+			cmd:  "lando",
+			args: []string{"wp", "acorn", "config:clear"},
 		},
 	}
 

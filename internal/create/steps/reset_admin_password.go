@@ -35,13 +35,16 @@ func (s *ResetAdminPasswordStep) Name() string {
 // - ctx: shared create context containing project paths and runner access
 //
 // Returns:
-// - an error when the password reset command fails
+// - an error when the password reset or fallback user creation fails
 //
 // Side effects:
-// - runs `lando wp user update 1 --user_pass=tamago` unless dry-run mode is enabled
+// - runs `lando wp user get tamago --field=ID` and resets that account password
+// - may create the `tamago` administrator account when it does not exist
 func (s *ResetAdminPasswordStep) Run(ctx *create.Context) error {
 	if ctx.DryRun {
-		ctx.Logger.Info("Would run: lando wp user update 1 --user_pass=tamago")
+		ctx.Logger.Info("Would run: lando wp user get tamago --field=ID")
+		ctx.Logger.Info("Would run: lando wp user update tamago --user_pass=tamago")
+		ctx.Logger.Info("Would run when missing: lando wp user create tamago email@email.pl --role=administrator --user_pass=tamago --display_name=tamago")
 		return nil
 	}
 
