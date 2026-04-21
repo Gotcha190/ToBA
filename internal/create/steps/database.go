@@ -90,8 +90,19 @@ func (s *ImportDatabaseStep) Run(ctx *create.Context) error {
 	}
 	ctx.Logger.Info("Prepared database: " + ctx.StarterData.DatabasePath)
 
+	tablePrefix, err := wordpress.BackupTablePrefix(ctx.Paths.DatabaseSQL)
+	if err != nil {
+		return err
+	}
+
 	if err := wordpress.ImportDatabase(ctx.Runner, ctx.Paths.Root, ctx.Paths.DatabaseSQL); err != nil {
 		return err
+	}
+	if tablePrefix != wordpress.DefaultTablePrefix {
+		ctx.Logger.Info("Detected custom table prefix in backup: " + tablePrefix)
+		if err := wordpress.SetConfigTablePrefix(filepath.Join(ctx.Paths.AppDir, "wp-config.php"), tablePrefix); err != nil {
+			return err
+		}
 	}
 	if err := wordpress.SearchReplace(ctx.Runner, ctx.Paths.Root, sourceURL, targetURL); err != nil {
 		return err

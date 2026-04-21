@@ -108,23 +108,30 @@ func TestGenerateAcornKeyStepSkipsWhenLocalThemeBackupExists(t *testing.T) {
 }
 
 func TestRefreshThemeCachesStepRunsExpectedCommands(t *testing.T) {
-	runner := &themeStepRunner{}
+	runner := &themeStepRunner{
+		outputs: map[string]string{
+			"lando wp acorn list": "  optimize         Cache the framework bootstrap files\n  cache:clear      Flush the application cache\n  acf:cache        Cache ACF assets\n",
+		},
+	}
 	ctx := newThemeStepContext(t)
 	ctx.Runner = runner
 
 	if err := NewRefreshThemeCachesStep().Run(ctx); err != nil {
 		t.Fatalf("RefreshThemeCachesStep returned error: %v", err)
 	}
-	if len(runner.commands) != 3 {
-		t.Fatalf("expected 3 cache commands, got %#v", runner.commands)
+	if len(runner.commands) != 4 {
+		t.Fatalf("expected 4 cache commands, got %#v", runner.commands)
 	}
-	if got := runner.commands[0].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "optimize" {
+	if got := runner.commands[0].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "list" {
+		t.Fatalf("unexpected list args: %#v", got)
+	}
+	if got := runner.commands[1].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "optimize" {
 		t.Fatalf("unexpected optimize args: %#v", got)
 	}
-	if got := runner.commands[1].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "cache:clear" {
+	if got := runner.commands[2].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "cache:clear" {
 		t.Fatalf("unexpected cache:clear args: %#v", got)
 	}
-	if got := runner.commands[2].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "acf:cache" {
+	if got := runner.commands[3].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "acf:cache" {
 		t.Fatalf("unexpected acf:cache args: %#v", got)
 	}
 }
@@ -132,8 +139,11 @@ func TestRefreshThemeCachesStepRunsExpectedCommands(t *testing.T) {
 func TestRefreshThemeCachesStepWarnsWhenRefreshFails(t *testing.T) {
 	logger := &starterTestLogger{}
 	runner := &themeStepRunner{
+		outputs: map[string]string{
+			"lando wp acorn list": "  optimize:clear   Remove the cached bootstrap files\n",
+		},
 		runErr: map[string]error{
-			"lando wp acorn optimize": errors.New("acorn unavailable"),
+			"lando wp acorn optimize:clear": errors.New("acorn unavailable"),
 		},
 	}
 	ctx := newThemeStepContext(t)

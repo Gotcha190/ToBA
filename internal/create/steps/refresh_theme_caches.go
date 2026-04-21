@@ -44,16 +44,17 @@ func (s *RefreshThemeCachesStep) Name() string {
 // - may write warning messages when cache refresh fails
 func (s *RefreshThemeCachesStep) Run(ctx *create.Context) error {
 	if ctx.DryRun {
-		ctx.Logger.Info("Would run: lando wp acorn optimize")
-		ctx.Logger.Info("Would run: lando wp acorn cache:clear")
-		ctx.Logger.Info("Would run: lando wp acorn acf:cache")
+		ctx.Logger.Info("Would detect available Acorn cache commands and run the appropriate refresh sequence")
+		ctx.Logger.Info("Standard: lando wp acorn optimize, lando wp acorn cache:clear, lando wp acorn acf:cache")
+		ctx.Logger.Info("Fallback: lando wp acorn optimize:clear, lando wp acorn acf:cache")
 		return nil
 	}
 
 	if err := wordpress.RefreshThemeCaches(ctx.Runner, ctx.Paths.Root); err != nil {
 		ctx.Logger.Warning(
 			"Failed to refresh theme caches automatically. Run manually: " +
-				"lando wp acorn optimize, lando wp acorn cache:clear, lando wp acorn acf:cache. Error: " +
+				"lando wp acorn list and use either " +
+				"`optimize + cache:clear + acf:cache` or `optimize:clear + acf:cache`. Error: " +
 				err.Error(),
 		)
 	}
