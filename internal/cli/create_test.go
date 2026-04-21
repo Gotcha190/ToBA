@@ -86,6 +86,12 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 			return "toet\n", nil
 		}
 	}
+	if cmd == "lando" && len(args) == 5 && args[0] == "wp" && args[1] == "user" && args[2] == "get" && args[3] == "tamago" && args[4] == "--field=ID" {
+		return "1\n", nil
+	}
+	if cmd == "lando" && len(args) == 3 && args[0] == "wp" && args[1] == "acorn" && args[2] == "list" {
+		return "  optimize         Cache the framework bootstrap files\n  cache:clear      Flush the application cache\n  acf:cache        Cache ACF assets\n", nil
+	}
 	return "", nil
 }
 
