@@ -2,21 +2,19 @@ package steps
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/gotcha190/toba/internal/create"
 	"github.com/gotcha190/toba/internal/updraft"
 )
 
 // prepareLocalStarterData validates an existing project directory as a local
-// Updraft backup source and copies its files into a temp workspace.
+// Updraft backup source and reuses its files directly.
 //
 // Parameters:
 // - ctx: shared create context containing project paths and mutable starter-data state
 //
 // Returns:
-// - an error when the local backup set is empty, invalid, incomplete, or cannot be copied
+// - an error when the local backup set is empty, invalid, or incomplete
 //
 // Side effects:
 // - marks the run as using an existing project directory
@@ -36,54 +34,14 @@ func prepareLocalStarterData(ctx *create.Context) error {
 	ctx.UseExistingProjectDir = true
 	ctx.Logger.Info("Using local project backup folder: " + ctx.Paths.Root)
 
-	if ctx.DryRun {
-		tempDir := filepath.Join(os.TempDir(), "toba-starter-dry-run")
-		ctx.StarterData = create.StarterData{
-			Mode:         starterDataModeLocal,
-			TempDir:      tempDir,
-			DatabasePath: tempPathFromSource(tempDir, "database", selection.Database),
-			PluginsPaths: tempPathsFromSources(tempDir, "plugins", selection.Plugins),
-			UploadsPaths: tempPathsFromSources(tempDir, "uploads", selection.Uploads),
-			OthersPaths:  tempPathsFromSources(tempDir, "others", selection.Others),
-			ThemePaths:   tempPathsFromSources(tempDir, "themes", selection.Themes),
-		}
-		return nil
-	}
-
-	tempDir, err := makeStarterTempDir()
-	if err != nil {
-		return err
-	}
-
-	databasePath, err := copyLocalFileToTemp(tempDir, "database", selection.Database)
-	if err != nil {
-		return err
-	}
-	pluginsPaths, err := copyLocalFilesToTemp(tempDir, "plugins", selection.Plugins)
-	if err != nil {
-		return err
-	}
-	uploadsPaths, err := copyLocalFilesToTemp(tempDir, "uploads", selection.Uploads)
-	if err != nil {
-		return err
-	}
-	othersPaths, err := copyLocalFilesToTemp(tempDir, "others", selection.Others)
-	if err != nil {
-		return err
-	}
-	themePaths, err := copyLocalFilesToTemp(tempDir, "themes", selection.Themes)
-	if err != nil {
-		return err
-	}
-
 	ctx.StarterData = create.StarterData{
 		Mode:         starterDataModeLocal,
-		TempDir:      tempDir,
-		DatabasePath: databasePath,
-		PluginsPaths: pluginsPaths,
-		UploadsPaths: uploadsPaths,
-		OthersPaths:  othersPaths,
-		ThemePaths:   themePaths,
+		TempDir:      "",
+		DatabasePath: selection.Database,
+		PluginsPaths: append([]string(nil), selection.Plugins...),
+		UploadsPaths: append([]string(nil), selection.Uploads...),
+		OthersPaths:  append([]string(nil), selection.Others...),
+		ThemePaths:   append([]string(nil), selection.Themes...),
 	}
 
 	return nil
