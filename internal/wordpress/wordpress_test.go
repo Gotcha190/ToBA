@@ -66,12 +66,7 @@ func TestInstallRunsExpectedCommands(t *testing.T) {
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
-			args: []string{"wp", "core", "download", "--locale=pl_PL"},
-		},
-		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "config", "create", "--dbname=wordpress", "--dbuser=wordpress", "--dbpass=wordpress", "--dbhost=database", "--dbcharset=utf8mb4"},
+			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp core download --locale='pl_PL' && wp config create --dbname='wordpress' --dbuser='wordpress' --dbpass='wordpress' --dbhost='database' --dbcharset='utf8mb4'"},
 		},
 		{
 			dir:  "/tmp/demo",
@@ -330,7 +325,7 @@ func TestSearchReplaceRunsExpectedCommand(t *testing.T) {
 func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
 	runner := &fakeRunner{
 		outputs: map[string]string{
-			"lando wp user get tamago --field=ID": "16\n",
+			"lando wp eval $user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}": "",
 		},
 	}
 
@@ -342,12 +337,7 @@ func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
-			args: []string{"wp", "user", "get", "tamago", "--field=ID"},
-		},
-		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "user", "update", "tamago", "--user_pass=tamago"},
+			args: []string{"wp", "eval", "$user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}"},
 		},
 	}
 
@@ -359,10 +349,7 @@ func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
 func TestResetAdminPasswordCreatesTamagoWhenMissing(t *testing.T) {
 	runner := &fakeRunner{
 		outputs: map[string]string{
-			"lando wp user get tamago --field=ID": "Error: Invalid user ID, email or login: 'tamago'\n",
-		},
-		captureErrs: map[string]error{
-			"lando wp user get tamago --field=ID": errors.New("missing user"),
+			"lando wp eval $user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}": "",
 		},
 	}
 
@@ -374,12 +361,7 @@ func TestResetAdminPasswordCreatesTamagoWhenMissing(t *testing.T) {
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
-			args: []string{"wp", "user", "get", "tamago", "--field=ID"},
-		},
-		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "user", "create", "tamago", "email@email.pl", "--role=administrator", "--user_pass=tamago", "--display_name=tamago"},
+			args: []string{"wp", "eval", "$user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}"},
 		},
 	}
 
@@ -411,7 +393,7 @@ func TestActivateThemeRunsExpectedCommand(t *testing.T) {
 func TestDetectImportedThemeSlugPrefersStylesheet(t *testing.T) {
 	runner := &fakeRunner{
 		outputs: map[string]string{
-			"lando wp option get stylesheet": "sage\n",
+			"lando wp eval echo get_option('stylesheet') ?: get_option('template');": "sage\n",
 		},
 	}
 
@@ -427,8 +409,7 @@ func TestDetectImportedThemeSlugPrefersStylesheet(t *testing.T) {
 func TestDetectImportedThemeSlugFallsBackToTemplate(t *testing.T) {
 	runner := &fakeRunner{
 		outputs: map[string]string{
-			"lando wp option get stylesheet": "\n",
-			"lando wp option get template":   "sage-fallback\n",
+			"lando wp eval echo get_option('stylesheet') ?: get_option('template');": "sage-fallback\n",
 		},
 	}
 
@@ -481,17 +462,7 @@ func TestRefreshThemeCachesRunsExpectedCommands(t *testing.T) {
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
-			args: []string{"wp", "acorn", "optimize"},
-		},
-		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "cache:clear"},
-		},
-		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "acf:cache"},
+			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn optimize && wp acorn cache:clear && wp acorn acf:cache"},
 		},
 	}
 
@@ -520,7 +491,7 @@ func TestRefreshThemeCachesSkipsUnavailableCommands(t *testing.T) {
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
-			args: []string{"wp", "acorn", "optimize:clear"},
+			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn optimize:clear"},
 		},
 	}
 
@@ -549,7 +520,7 @@ func TestRefreshThemeCachesFallsBackToConfigClear(t *testing.T) {
 		{
 			dir:  "/tmp/demo",
 			cmd:  "lando",
-			args: []string{"wp", "acorn", "config:clear"},
+			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn config:clear"},
 		},
 	}
 
