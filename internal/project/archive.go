@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // ExtractZip expands a zip archive held in memory into destDir.
@@ -49,6 +52,39 @@ func ExtractZipFile(sourcePath string, destDir string) error {
 		return err
 	}
 	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	reader, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		return err
+	}
+
+	return extractZip(reader, destDir)
+}
+
+// ExtractZipFiles expands multiple zip archives into destDir. Archives are
+// extracted in parallel only when their target files do not overlap.
+//
+// Parameters:
+// - sourcePaths: zip archive paths on disk
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - an error when any archive cannot be opened or extracted safely
+//
+// Side effects:
+// - reads multiple archives from disk
+// - writes extracted files and directories to destDir
+func ExtractZipFiles(sourcePaths []string, destDir string) error {
+	plans := make([]zipExtractionPlan, 0, len(sourcePaths))
+	for _, sourcePath := range sourcePaths {
+		if sourcePath == "" {
+			continue
+		}
 
 		reader, err := zip.OpenReader(sourcePath)
 		if err != nil {
@@ -280,31 +316,25 @@ func extractZipWithSystemUnzip(sourcePath string, destDir string, entries []zipE
 // Side effects:
 // - creates directories and files under destDir
 func extractZip(reader *zip.Reader, destDir string) error {
+	entries, err := buildZipEntryPlans(reader, destDir)
+	if err != nil {
+		return err
+	}
+
+	return extractZipEntries(reader, entries)
+}
+
+func buildZipEntryPlans(reader *zip.Reader, destDir string) ([]zipEntryPlan, error) {
+	entries := make([]zipEntryPlan, 0, len(reader.File))
 	for _, file := range reader.File {
 		targetPath, err := secureJoin(destDir, file.Name)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		mode := file.Mode()
 		if mode&os.ModeSymlink != 0 {
-			return fmt.Errorf("archive entry is a symlink: %s", file.Name)
-		}
-
-		if file.FileInfo().IsDir() {
-			if err := os.MkdirAll(targetPath, 0755); err != nil {
-				return err
-			}
-			continue
-		}
-
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-			return err
-		}
-
-		input, err := file.Open()
-		if err != nil {
-			return err
+			return nil, fmt.Errorf("archive entry is a symlink: %s", file.Name)
 		}
 
 		fileMode := mode.Perm()
@@ -312,7 +342,46 @@ func extractZip(reader *zip.Reader, destDir string) error {
 			fileMode = 0644
 		}
 
-		output, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
+		entries = append(entries, zipEntryPlan{
+			entryName:  file.Name,
+			targetPath: targetPath,
+			mode:       fileMode,
+			isDir:      file.FileInfo().IsDir(),
+		})
+	}
+
+	return entries, nil
+}
+
+func extractZipEntries(reader *zip.Reader, entries []zipEntryPlan) error {
+	zipFiles := make(map[string]*zip.File, len(reader.File))
+	for _, file := range reader.File {
+		zipFiles[file.Name] = file
+	}
+
+	for _, entry := range entries {
+		if entry.isDir {
+			if err := os.MkdirAll(entry.targetPath, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(entry.targetPath), 0755); err != nil {
+			return err
+		}
+
+		file := zipFiles[entry.entryName]
+		if file == nil {
+			return fmt.Errorf("archive entry disappeared during extraction: %s", entry.entryName)
+		}
+
+		input, err := file.Open()
+		if err != nil {
+			return err
+		}
+
+		output, err := os.OpenFile(entry.targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, entry.mode)
 		if err != nil {
 			input.Close()
 			return err
