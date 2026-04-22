@@ -99,6 +99,94 @@ func TestExtractZipFilesFallsBackToSequentialWhenArchivesOverlap(t *testing.T) {
 	}
 }
 
+func TestExtractZipFileWithExistingDirectories(t *testing.T) {
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "uploads.zip")
+
+	output, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatalf("failed to create %s: %v", archivePath, err)
+	}
+
+	writer := zip.NewWriter(output)
+	for _, name := range []string{
+		"uploads/2023/",
+		"uploads/2023/12/",
+		"uploads/2023/12/example.txt",
+		"uploads/2023/11/",
+		"uploads/2023/11/older.txt",
+	} {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatalf("failed to create zip entry %s: %v", name, err)
+		}
+		if !strings.HasSuffix(name, "/") {
+			if _, err := entry.Write([]byte(name)); err != nil {
+				t.Fatalf("failed to write zip entry %s: %v", name, err)
+			}
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+	if err := output.Close(); err != nil {
+		t.Fatalf("failed to close %s: %v", archivePath, err)
+	}
+
+	dest := t.TempDir()
+	for _, path := range []string{
+		filepath.Join(dest, "uploads", "2023"),
+		filepath.Join(dest, "uploads", "2023", "12"),
+	} {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			t.Fatalf("failed to precreate %s: %v", path, err)
+		}
+	}
+
+	if err := ExtractZipFile(archivePath, dest); err != nil {
+		t.Fatalf("ExtractZipFile returned error: %v", err)
+	}
+
+	for _, path := range []string{
+		filepath.Join(dest, "uploads", "2023", "12", "example.txt"),
+		filepath.Join(dest, "uploads", "2023", "11", "older.txt"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s to exist: %v", path, err)
+		}
+	}
+}
+
+func TestExtractZipFilesAllowSharedDirectoriesWithoutSharedFiles(t *testing.T) {
+	dir := t.TempDir()
+	first := zipFileWithDirs(t, dir, "uploads-a.zip", []string{
+		"uploads/2023/",
+		"uploads/2023/12/",
+	}, map[string]string{
+		"uploads/2023/12/a.txt": "a",
+	})
+	second := zipFileWithDirs(t, dir, "uploads-b.zip", []string{
+		"uploads/2023/",
+		"uploads/2023/12/",
+	}, map[string]string{
+		"uploads/2023/12/b.txt": "b",
+	})
+
+	dest := t.TempDir()
+	if err := ExtractZipFiles([]string{first, second}, dest); err != nil {
+		t.Fatalf("ExtractZipFiles returned error: %v", err)
+	}
+
+	for _, path := range []string{
+		filepath.Join(dest, "uploads", "2023", "12", "a.txt"),
+		filepath.Join(dest, "uploads", "2023", "12", "b.txt"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s to exist: %v", path, err)
+		}
+	}
+}
+
 func TestWriteGzipFile(t *testing.T) {
 	var source bytes.Buffer
 	gzipWriter := gzip.NewWriter(&source)
@@ -153,6 +241,41 @@ func zipFile(t *testing.T, dir string, name string, files map[string]string) str
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, zipBytes(t, files), 0644); err != nil {
 		t.Fatalf("failed to write %s: %v", path, err)
+	}
+
+	return path
+}
+
+func zipFileWithDirs(t *testing.T, dir string, name string, dirs []string, files map[string]string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+	output, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("failed to create %s: %v", path, err)
+	}
+	defer output.Close()
+
+	writer := zip.NewWriter(output)
+	for _, entryName := range dirs {
+		if !strings.HasSuffix(entryName, "/") {
+			entryName += "/"
+		}
+		if _, err := writer.Create(entryName); err != nil {
+			t.Fatalf("failed to create zip dir entry %s: %v", entryName, err)
+		}
+	}
+	for entryName, content := range files {
+		entry, err := writer.Create(entryName)
+		if err != nil {
+			t.Fatalf("failed to create zip entry %s: %v", entryName, err)
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			t.Fatalf("failed to write zip entry %s: %v", entryName, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
 	}
 
 	return path

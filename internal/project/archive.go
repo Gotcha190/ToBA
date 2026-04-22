@@ -120,6 +120,7 @@ type zipExtractionPlan struct {
 	sourcePath   string
 	entries      []zipEntryPlan
 	targets      map[string]struct{}
+	fileNames    []string
 	canRunDirect bool
 }
 
@@ -130,12 +131,14 @@ func newZipExtractionPlan(sourcePath string, reader *zip.Reader, destDir string)
 	}
 
 	targets := make(map[string]struct{}, len(entries))
+	fileNames := make([]string, 0, len(entries))
 	canRunDirect := true
 	for _, entry := range entries {
 		if entry.isDir {
 			continue
 		}
 
+		fileNames = append(fileNames, entry.entryName)
 		normalizedTarget := filepath.Clean(entry.targetPath)
 		if _, exists := targets[normalizedTarget]; exists {
 			canRunDirect = false
@@ -147,6 +150,7 @@ func newZipExtractionPlan(sourcePath string, reader *zip.Reader, destDir string)
 		sourcePath:   sourcePath,
 		entries:      entries,
 		targets:      targets,
+		fileNames:    fileNames,
 		canRunDirect: canRunDirect,
 	}, nil
 }
@@ -162,7 +166,7 @@ func extractZipPath(sourcePath string, reader *zip.Reader, destDir string) error
 
 func (p zipExtractionPlan) extract(destDir string) error {
 	if p.canRunDirect && canUseSystemUnzip() {
-		if err := extractZipWithSystemUnzip(p.sourcePath, destDir); err != nil {
+		if err := extractZipWithSystemUnzip(p.sourcePath, destDir, p.entries, p.fileNames); err != nil {
 			return fmt.Errorf("extract %s: %w", p.sourcePath, err)
 		}
 		return nil
@@ -242,18 +246,48 @@ func canUseSystemUnzip() bool {
 	return err == nil
 }
 
-func extractZipWithSystemUnzip(sourcePath string, destDir string) error {
+const unzipBatchSize = 256
+
+func extractZipWithSystemUnzip(sourcePath string, destDir string, entries []zipEntryPlan, fileNames []string) error {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return err
 	}
 
-	cmd := exec.Command("unzip", "-qq", "-o", sourcePath, "-d", destDir)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
+	for _, entry := range entries {
+		if entry.isDir {
+			if err := os.MkdirAll(entry.targetPath, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(entry.targetPath), 0755); err != nil {
 			return err
 		}
-		return fmt.Errorf("%w: %s", err, message)
+	}
+
+	if len(fileNames) == 0 {
+		return nil
+	}
+
+	for i := 0; i < len(fileNames); i += unzipBatchSize {
+		end := i + unzipBatchSize
+		if end > len(fileNames) {
+			end = len(fileNames)
+		}
+
+		args := make([]string, 0, 5+(end-i))
+		args = append(args, "-qq", "-o", sourcePath)
+		args = append(args, fileNames[i:end]...)
+		args = append(args, "-d", destDir)
+
+		cmd := exec.Command("unzip", args...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			message := strings.TrimSpace(string(output))
+			if message == "" {
+				return err
+			}
+			return fmt.Errorf("%w: %s", err, message)
+		}
 	}
 
 	return nil
