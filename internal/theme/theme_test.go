@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -18,17 +19,20 @@ type recordedCommand struct {
 }
 
 type fakeRunner struct {
+	mu       sync.Mutex
 	commands []recordedCommand
 	err      error
 	runErr   map[string]error
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
+	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	r.mu.Unlock()
 	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
 		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
 			return err
@@ -97,12 +101,12 @@ func TestBuildRunsExpectedCommands(t *testing.T) {
 		{
 			dir:  themeDir,
 			cmd:  "lando",
-			args: []string{"composer", "install"},
+			args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
 		},
 		{
 			dir:  themeDir,
 			cmd:  "npm",
-			args: []string{"i"},
+			args: []string{"ci", "--no-audit", "--no-fund"},
 		},
 		{
 			dir:  themeDir,
@@ -111,8 +115,16 @@ func TestBuildRunsExpectedCommands(t *testing.T) {
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if len(runner.commands) != len(expected) {
+		t.Fatalf("unexpected commands count:\nexpected: %d\ngot: %d\ncommands: %#v", len(expected), len(runner.commands), runner.commands)
+	}
+	for _, command := range expected {
+		if !containsRecordedCommand(runner.commands, command) {
+			t.Fatalf("expected command %#v in %#v", command, runner.commands)
+		}
+	}
+	if !reflect.DeepEqual(runner.commands[len(runner.commands)-1], expected[2]) {
+		t.Fatalf("unexpected final command:\nexpected: %#v\ngot: %#v", expected[2], runner.commands[len(runner.commands)-1])
 	}
 }
 
@@ -171,6 +183,16 @@ func TestBuildReturnsFallbackErrorWhenNpmCiAndInstallFail(t *testing.T) {
 	if !errors.Is(err, installErr) {
 		t.Fatalf("expected %v, got %v", installErr, err)
 	}
+}
+
+func containsRecordedCommand(commands []recordedCommand, expected recordedCommand) bool {
+	for _, command := range commands {
+		if reflect.DeepEqual(command, expected) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func TestGenerateAcornKeyRunsTwice(t *testing.T) {

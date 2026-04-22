@@ -122,25 +122,46 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	}()
 
 	pipeline := create.Pipeline{
-		Steps: []create.Step{
-			steps.NewCollectConfigStep(),
-			steps.NewPrepareStarterDataStep(),
-			steps.NewProjectDirStep(),
-			steps.NewGenerateLandoConfigStep(),
-			steps.NewStartLandoStep(),
-			steps.NewInstallWordPressStep(),
-			steps.NewInstallThemeStep(),
-			steps.NewBuildThemeStep(),
-			steps.NewImportPluginsStep(),
-			steps.NewImportUploadsStep(),
-			steps.NewImportOthersStep(),
-			steps.NewImportDatabaseStep(),
-			steps.NewResetAdminPasswordStep(),
-			steps.NewActivateThemeStep(),
-			steps.NewGenerateAcornKeyStep(),
-			steps.NewClearImportedCachesStep(),
-			steps.NewFlushRewriteRulesStep(),
-			steps.NewRefreshThemeCachesStep(),
+		Stages: []create.Stage{
+			{
+				Name: "bootstrap",
+				Steps: []create.Step{
+					steps.NewCollectConfigStep(),
+					steps.NewPrepareStarterDataStep(),
+					steps.NewProjectDirStep(),
+					steps.NewGenerateLandoConfigStep(),
+					steps.NewStartLandoStep(),
+					steps.NewInstallWordPressStep(),
+				},
+			},
+			{
+				Name:     "restore-primary",
+				Parallel: true,
+				Steps: []create.Step{
+					steps.NewInstallThemeStep(),
+					steps.NewImportPluginsStep(),
+					steps.NewImportUploadsStep(),
+					steps.NewImportDatabaseStep(),
+				},
+			},
+			{
+				Name: "restore-secondary",
+				Steps: []create.Step{
+					steps.NewBuildThemeStep(),
+					steps.NewImportOthersStep(),
+				},
+			},
+			{
+				Name: "finalize",
+				Steps: []create.Step{
+					steps.NewResetAdminPasswordStep(),
+					steps.NewActivateThemeStep(),
+					steps.NewGenerateAcornKeyStep(),
+					steps.NewClearImportedCachesStep(),
+					steps.NewFlushRewriteRulesStep(),
+					steps.NewRefreshThemeCachesStep(),
+				},
+			},
 		},
 	}
 
