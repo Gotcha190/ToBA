@@ -50,17 +50,221 @@ func ExtractZipFile(sourcePath string, destDir string) error {
 	}
 	defer file.Close()
 
-	info, err := file.Stat()
+		reader, err := zip.OpenReader(sourcePath)
+		if err != nil {
+			return err
+		}
+
+		plan, err := newZipExtractionPlan(sourcePath, &reader.Reader, destDir)
+		closeErr := reader.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+
+		plans = append(plans, plan)
+	}
+
+	if len(plans) == 0 {
+		return nil
+	}
+
+	if !zipPlansAreIndependent(plans) {
+		for _, plan := range plans {
+			if err := plan.extract(destDir); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return extractZipPlansInParallel(plans, destDir)
+}
+
+type zipEntryPlan struct {
+	entryName  string
+	targetPath string
+	mode       os.FileMode
+	isDir      bool
+}
+
+type zipExtractionPlan struct {
+	sourcePath   string
+	entries      []zipEntryPlan
+	targets      map[string]struct{}
+	fileNames    []string
+	canRunDirect bool
+}
+
+func newZipExtractionPlan(sourcePath string, reader *zip.Reader, destDir string) (zipExtractionPlan, error) {
+	entries, err := buildZipEntryPlans(reader, destDir)
+	if err != nil {
+		return zipExtractionPlan{}, fmt.Errorf("inspect %s: %w", sourcePath, err)
+	}
+
+	targets := make(map[string]struct{}, len(entries))
+	fileNames := make([]string, 0, len(entries))
+	canRunDirect := true
+	for _, entry := range entries {
+		if entry.isDir {
+			continue
+		}
+
+		fileNames = append(fileNames, entry.entryName)
+		normalizedTarget := filepath.Clean(entry.targetPath)
+		if _, exists := targets[normalizedTarget]; exists {
+			canRunDirect = false
+		}
+		targets[normalizedTarget] = struct{}{}
+	}
+
+	return zipExtractionPlan{
+		sourcePath:   sourcePath,
+		entries:      entries,
+		targets:      targets,
+		fileNames:    fileNames,
+		canRunDirect: canRunDirect,
+	}, nil
+}
+
+func extractZipPath(sourcePath string, reader *zip.Reader, destDir string) error {
+	plan, err := newZipExtractionPlan(sourcePath, reader, destDir)
 	if err != nil {
 		return err
 	}
 
-	reader, err := zip.NewReader(file, info.Size())
+	return plan.extract(destDir)
+}
+
+func (p zipExtractionPlan) extract(destDir string) error {
+	if p.canRunDirect && canUseSystemUnzip() {
+		if err := extractZipWithSystemUnzip(p.sourcePath, destDir, p.entries, p.fileNames); err != nil {
+			return fmt.Errorf("extract %s: %w", p.sourcePath, err)
+		}
+		return nil
+	}
+
+	reader, err := zip.OpenReader(p.sourcePath)
 	if err != nil {
+		return fmt.Errorf("open %s: %w", p.sourcePath, err)
+	}
+	defer reader.Close()
+
+	if err := extractZipEntries(&reader.Reader, p.entries); err != nil {
+		return fmt.Errorf("extract %s: %w", p.sourcePath, err)
+	}
+
+	return nil
+}
+
+func zipPlansAreIndependent(plans []zipExtractionPlan) bool {
+	seen := make(map[string]struct{})
+	for _, plan := range plans {
+		for target := range plan.targets {
+			if _, exists := seen[target]; exists {
+				return false
+			}
+			seen[target] = struct{}{}
+		}
+	}
+
+	return true
+}
+
+func extractZipPlansInParallel(plans []zipExtractionPlan, destDir string) error {
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(plans) {
+		workers = len(plans)
+	}
+
+	work := make(chan zipExtractionPlan)
+	errs := make(chan error, len(plans))
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for plan := range work {
+				if err := plan.extract(destDir); err != nil {
+					errs <- err
+				}
+			}
+		}()
+	}
+
+	for _, plan := range plans {
+		work <- plan
+	}
+	close(work)
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func canUseSystemUnzip() bool {
+	_, err := exec.LookPath("unzip")
+	return err == nil
+}
+
+const unzipBatchSize = 256
+
+func extractZipWithSystemUnzip(sourcePath string, destDir string, entries []zipEntryPlan, fileNames []string) error {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return err
 	}
 
-	return extractZip(reader, destDir)
+	for _, entry := range entries {
+		if entry.isDir {
+			if err := os.MkdirAll(entry.targetPath, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(entry.targetPath), 0755); err != nil {
+			return err
+		}
+	}
+
+	if len(fileNames) == 0 {
+		return nil
+	}
+
+	for i := 0; i < len(fileNames); i += unzipBatchSize {
+		end := i + unzipBatchSize
+		if end > len(fileNames) {
+			end = len(fileNames)
+		}
+
+		args := make([]string, 0, 5+(end-i))
+		args = append(args, "-qq", "-o", sourcePath)
+		args = append(args, fileNames[i:end]...)
+		args = append(args, "-d", destDir)
+
+		cmd := exec.Command("unzip", args...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			message := strings.TrimSpace(string(output))
+			if message == "" {
+				return err
+			}
+			return fmt.Errorf("%w: %s", err, message)
+		}
+	}
+
+	return nil
 }
 
 // extractZip writes each safe entry from reader into destDir while rejecting
