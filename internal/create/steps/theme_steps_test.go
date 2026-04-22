@@ -74,7 +74,7 @@ func TestBuildThemeStepSkipsWhenLocalThemeBackupExists(t *testing.T) {
 func TestActivateThemeStepUsesDatabaseThemeSlugForLocalThemeBackup(t *testing.T) {
 	runner := &themeStepRunner{
 		outputs: map[string]string{
-			"lando wp option get stylesheet": "sage\n",
+			"lando wp eval echo get_option('stylesheet') ?: get_option('template');": "sage\n",
 		},
 	}
 	ctx := newThemeStepContext(t)
@@ -119,20 +119,14 @@ func TestRefreshThemeCachesStepRunsExpectedCommands(t *testing.T) {
 	if err := NewRefreshThemeCachesStep().Run(ctx); err != nil {
 		t.Fatalf("RefreshThemeCachesStep returned error: %v", err)
 	}
-	if len(runner.commands) != 4 {
-		t.Fatalf("expected 4 cache commands, got %#v", runner.commands)
+	if len(runner.commands) != 2 {
+		t.Fatalf("expected 2 cache commands, got %#v", runner.commands)
 	}
 	if got := runner.commands[0].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "list" {
 		t.Fatalf("unexpected list args: %#v", got)
 	}
-	if got := runner.commands[1].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "optimize" {
-		t.Fatalf("unexpected optimize args: %#v", got)
-	}
-	if got := runner.commands[2].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "cache:clear" {
-		t.Fatalf("unexpected cache:clear args: %#v", got)
-	}
-	if got := runner.commands[3].args; len(got) != 3 || got[0] != "wp" || got[1] != "acorn" || got[2] != "acf:cache" {
-		t.Fatalf("unexpected acf:cache args: %#v", got)
+	if got := runner.commands[1].args; len(got) != 5 || got[0] != "ssh" || got[1] != "-s" || got[2] != "appserver" || got[3] != "-c" || got[4] != "cd /app && wp acorn optimize && wp acorn cache:clear && wp acorn acf:cache" {
+		t.Fatalf("unexpected batch args: %#v", got)
 	}
 }
 
@@ -143,7 +137,7 @@ func TestRefreshThemeCachesStepWarnsWhenRefreshFails(t *testing.T) {
 			"lando wp acorn list": "  optimize:clear   Remove the cached bootstrap files\n",
 		},
 		runErr: map[string]error{
-			"lando wp acorn optimize:clear": errors.New("acorn unavailable"),
+			"lando ssh -s appserver -c cd /app && wp acorn optimize:clear": errors.New("acorn unavailable"),
 		},
 	}
 	ctx := newThemeStepContext(t)
