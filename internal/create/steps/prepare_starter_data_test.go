@@ -99,15 +99,12 @@ func TestPrepareStarterDataUsesLocalProjectBackupsWhenComplete(t *testing.T) {
 	if !ctx.UseExistingProjectDir {
 		t.Fatal("expected existing project dir mode to be enabled")
 	}
-	if ctx.StarterData.TempDir != "" {
-		t.Fatalf("expected no starter temp dir for local mode, got %q", ctx.StarterData.TempDir)
-	}
 	for _, path := range append([]string{ctx.StarterData.DatabasePath}, append(append(append(ctx.StarterData.PluginsPaths, ctx.StarterData.UploadsPaths...), ctx.StarterData.OthersPaths...), ctx.StarterData.ThemePaths...)...) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)
 		}
-		if !strings.HasPrefix(path, ctx.Paths.Root) {
-			t.Fatalf("expected %s to be reused directly from the project root", path)
+		if strings.HasPrefix(path, ctx.Paths.Root) {
+			t.Fatalf("expected %s to be copied to a temp dir", path)
 		}
 	}
 }
