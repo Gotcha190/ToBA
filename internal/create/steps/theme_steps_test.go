@@ -5,27 +5,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/gotcha190/toba/internal/create"
 )
 
 type themeStepRunner struct {
-	mu       sync.Mutex
 	commands []recordedCommand
 	outputs  map[string]string
 	runErr   map[string]error
 }
 
 func (r *themeStepRunner) Run(dir string, cmd string, args ...string) error {
-	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
-	r.mu.Unlock()
 	if r.runErr != nil {
 		if err, ok := r.runErr[strings.Join(append([]string{cmd}, args...), " ")]; ok {
 			return err
@@ -35,13 +31,11 @@ func (r *themeStepRunner) Run(dir string, cmd string, args ...string) error {
 }
 
 func (r *themeStepRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
-	r.mu.Unlock()
 	key := strings.Join(append([]string{cmd}, args...), " ")
 	return r.outputs[key], nil
 }

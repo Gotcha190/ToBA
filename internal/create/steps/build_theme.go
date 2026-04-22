@@ -42,9 +42,7 @@ func (s *BuildThemeStep) Name() string {
 // - an error when dependency installation or the theme build fails
 //
 // Side effects:
-// - may run `lando composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress`
-// - may run `npm ci --no-audit --no-fund`
-// - may run `npm run build`
+// - may run `lando composer install`, `npm i`, and `npm run build`
 // - writes dry-run messages instead of executing commands when dry-run mode is enabled
 func (s *BuildThemeStep) Run(ctx *create.Context) error {
 	if len(ctx.StarterData.ThemePaths) > 0 {
@@ -55,9 +53,9 @@ func (s *BuildThemeStep) Run(ctx *create.Context) error {
 	themeDir := filepath.Join(ctx.Paths.Themes, ctx.Config.Name)
 
 	if ctx.DryRun {
-		ctx.Logger.Info("Would run in parallel: lando composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress")
-		ctx.Logger.Info("Would run in parallel: npm ci --no-audit --no-fund")
-		ctx.Logger.Info("Would then run: npm run build")
+		ctx.Logger.Info("Would run: lando composer install")
+		ctx.Logger.Info("Would run: npm i")
+		ctx.Logger.Info("Would run: npm run build")
 		return nil
 	}
 

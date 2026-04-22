@@ -4,15 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/gotcha190/toba/internal/create"
 )
-
-type buildCommand struct {
-	cmd  string
-	args []string
-}
 
 type MissingStarterRepoError struct{}
 
@@ -75,71 +69,21 @@ func Install(runner create.CommandRunner, themesDir string, starterRepo string, 
 // - an error when any dependency installation or build command fails
 //
 // Side effects:
-// - runs `lando composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress`
-// - runs `npm ci --no-audit --no-fund`
-// - runs `npm run build`
+// - runs `lando composer install`, `npm i`, and `npm run build`
 func Build(runner create.CommandRunner, themeDir string) error {
-	installErrors := make(chan error, 2)
-	var waitGroup sync.WaitGroup
-
-	for _, command := range installCommands() {
-		waitGroup.Add(1)
-
-		go func(command buildCommand) {
-			defer waitGroup.Done()
-
-			if err := runner.Run(themeDir, command.cmd, command.args...); err != nil {
-				installErrors <- wrapBuildError(command.cmd, err)
-			}
-		}(command)
+	if err := runner.Run(themeDir, "lando", "composer", "install"); err != nil {
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme composer install failed", err)
 	}
 
-	waitGroup.Wait()
-	close(installErrors)
-
-	for err := range installErrors {
-		if err != nil {
-			return err
-		}
+	if err := runner.Run(themeDir, "npm", "i"); err != nil {
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme npm install failed", err)
 	}
 
-	buildCommand := buildThemeCommand()
-	if err := runner.Run(themeDir, buildCommand.cmd, buildCommand.args...); err != nil {
+	if err := runner.Run(themeDir, "npm", "run", "build"); err != nil {
 		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme build failed", err)
 	}
 
 	return nil
-}
-
-func installCommands() []buildCommand {
-	return []buildCommand{
-		{
-			cmd:  "lando",
-			args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
-		},
-		{
-			cmd:  "npm",
-			args: []string{"ci", "--no-audit", "--no-fund"},
-		},
-	}
-}
-
-func buildThemeCommand() buildCommand {
-	return buildCommand{
-		cmd:  "npm",
-		args: []string{"run", "build"},
-	}
-}
-
-func wrapBuildError(command string, err error) error {
-	switch command {
-	case "lando":
-		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme composer install failed", err)
-	case "npm":
-		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme npm install failed", err)
-	default:
-		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme build failed", err)
-	}
 }
 
 // GenerateAcornKey runs the Acorn key generation command twice for the local
