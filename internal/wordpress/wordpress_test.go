@@ -140,6 +140,24 @@ func TestBackupSourceURLPrefersHomeURL(t *testing.T) {
 	}
 }
 
+func TestBackupSourceURLHandlesVeryLongLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "database.sql")
+	content := strings.Repeat("x", 128*1024) + "\n" +
+		"# Home URL: https://preferred.example.com\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write SQL file: %v", err)
+	}
+
+	sourceURL, err := BackupSourceURL(path)
+	if err != nil {
+		t.Fatalf("BackupSourceURL returned error: %v", err)
+	}
+	if sourceURL != "https://preferred.example.com" {
+		t.Fatalf("unexpected source URL: %q", sourceURL)
+	}
+}
+
 func TestBackupTablePrefixPrefersMetadata(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "database.sql")
@@ -171,6 +189,24 @@ func TestBackupTablePrefixFallsBackToDefault(t *testing.T) {
 		t.Fatalf("BackupTablePrefix returned error: %v", err)
 	}
 	if prefix != DefaultTablePrefix {
+		t.Fatalf("unexpected table prefix: %q", prefix)
+	}
+}
+
+func TestBackupTablePrefixHandlesVeryLongLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "database.sql")
+	content := strings.Repeat("x", 128*1024) + "\n" +
+		"CREATE TABLE `txxbt_options` (\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write SQL file: %v", err)
+	}
+
+	prefix, err := BackupTablePrefix(path)
+	if err != nil {
+		t.Fatalf("BackupTablePrefix returned error: %v", err)
+	}
+	if prefix != "txxbt_" {
 		t.Fatalf("unexpected table prefix: %q", prefix)
 	}
 }

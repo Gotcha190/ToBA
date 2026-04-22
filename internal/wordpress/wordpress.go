@@ -1,8 +1,10 @@
 package wordpress
 
 import (
-	"bufio"
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -24,6 +26,7 @@ const (
 	defaultAdminEmail    = "email@email.pl"
 	defaultAdminPassword = "tamago"
 	DefaultTablePrefix   = "wp_"
+	metadataHeaderLimit  = 64 * 1024
 )
 
 // Install downloads WordPress, creates wp-config.php, and performs the initial
@@ -153,17 +156,35 @@ func BackupSourceURL(sqlPath string) (string, error) {
 	defer file.Close()
 
 	var backupURL string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	parseLine := func(line string) error {
+		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "# Home URL:"):
-			return validateURL(strings.TrimSpace(strings.TrimPrefix(line, "# Home URL:")))
+			value, err := validateURL(strings.TrimSpace(strings.TrimPrefix(line, "# Home URL:")))
+			if err != nil {
+				return err
+			}
+			backupURL = value
+			return errStopReading
 		case backupURL == "" && strings.HasPrefix(line, "# Backup of:"):
 			backupURL = strings.TrimSpace(strings.TrimPrefix(line, "# Backup of:"))
 		}
+		return nil
 	}
-	if err := scanner.Err(); err != nil {
+
+	err = scanMetadataHeader(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
+		return "", err
+	}
+	if backupURL != "" {
+		return validateURL(backupURL)
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	err = forEachLine(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
 		return "", err
 	}
 	if backupURL == "" {
@@ -183,21 +204,44 @@ func BackupTablePrefix(sqlPath string) (string, error) {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	var tablePrefix string
+	parseLine := func(line string) error {
+		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "# Table prefix:"):
-			return normalizeTablePrefix(strings.TrimSpace(strings.TrimPrefix(line, "# Table prefix:")))
+			value, err := normalizeTablePrefix(strings.TrimSpace(strings.TrimPrefix(line, "# Table prefix:")))
+			if err != nil {
+				return err
+			}
+			tablePrefix = value
+			return errStopReading
 		case strings.HasPrefix(line, "# Table: `"), strings.HasPrefix(line, "CREATE TABLE `"), strings.HasPrefix(line, "DROP TABLE IF EXISTS `"):
 			tableName := tableNameFromLine(line)
 			if prefix, ok := tablePrefixFromTableName(tableName); ok {
-				return prefix, nil
+				tablePrefix = prefix
+				return errStopReading
 			}
 		}
+		return nil
 	}
-	if err := scanner.Err(); err != nil {
+
+	err = scanMetadataHeader(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
 		return "", err
+	}
+	if tablePrefix != "" {
+		return tablePrefix, nil
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	err = forEachLine(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
+		return "", err
+	}
+	if tablePrefix != "" {
+		return tablePrefix, nil
 	}
 
 	return DefaultTablePrefix, nil
@@ -361,6 +405,51 @@ func tablePrefixFromTableName(tableName string) (string, bool) {
 	}
 
 	return "", false
+}
+
+var errStopReading = errors.New("stop reading")
+
+func scanMetadataHeader(file *os.File, fn func(line string) error) error {
+	return forEachLine(io.LimitReader(file, metadataHeaderLimit), fn)
+}
+
+func forEachLine(reader io.Reader, fn func(line string) error) error {
+	buf := make([]byte, 0, 64*1024)
+	lineBuf := bytes.NewBuffer(buf)
+	chunk := make([]byte, 32*1024)
+
+	for {
+		n, err := reader.Read(chunk)
+		if n > 0 {
+			start := 0
+			for i := 0; i < n; i++ {
+				if chunk[i] != '\n' {
+					continue
+				}
+
+				lineBuf.Write(chunk[start:i])
+				line := strings.TrimSuffix(lineBuf.String(), "\r")
+				lineBuf.Reset()
+				if callErr := fn(line); callErr != nil {
+					return callErr
+				}
+				start = i + 1
+			}
+			if start < n {
+				lineBuf.Write(chunk[start:n])
+			}
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				if lineBuf.Len() == 0 {
+					return nil
+				}
+				return fn(strings.TrimSuffix(lineBuf.String(), "\r"))
+			}
+			return err
+		}
+	}
 }
 
 // ResetAdminPassword resets the default local WordPress admin password, or
