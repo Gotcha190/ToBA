@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -18,16 +19,19 @@ type recordedCommand struct {
 }
 
 type fakeRunner struct {
+	mu       sync.Mutex
 	commands []recordedCommand
 	err      error
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
+	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	r.mu.Unlock()
 	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
 		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
 			return err
@@ -86,26 +90,36 @@ func TestBuildRunsExpectedCommands(t *testing.T) {
 		t.Fatalf("Build returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expectedCommands := []recordedCommand{
 		{
 			dir:  themeDir,
 			cmd:  "lando",
-			args: []string{"composer", "install"},
+			args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
 		},
 		{
 			dir:  themeDir,
 			cmd:  "npm",
-			args: []string{"i"},
-		},
-		{
-			dir:  themeDir,
-			cmd:  "npm",
-			args: []string{"run", "build"},
+			args: []string{"ci", "--no-audit", "--no-fund"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if len(runner.commands) != 3 {
+		t.Fatalf("expected 3 commands, got %#v", runner.commands)
+	}
+
+	for _, expectedCommand := range expectedCommands {
+		if !containsRecordedCommand(runner.commands[:2], expectedCommand) {
+			t.Fatalf("missing install command %#v in %#v", expectedCommand, runner.commands)
+		}
+	}
+
+	expectedBuild := recordedCommand{
+		dir:  themeDir,
+		cmd:  "npm",
+		args: []string{"run", "build"},
+	}
+	if !reflect.DeepEqual(runner.commands[2], expectedBuild) {
+		t.Fatalf("unexpected build command:\nexpected: %#v\ngot: %#v", expectedBuild, runner.commands[2])
 	}
 }
 
@@ -156,4 +170,14 @@ func TestInstallFailsWhenTargetExists(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected install to fail when theme dir exists")
 	}
+}
+
+func containsRecordedCommand(commands []recordedCommand, expected recordedCommand) bool {
+	for _, command := range commands {
+		if reflect.DeepEqual(command, expected) {
+			return true
+		}
+	}
+
+	return false
 }
