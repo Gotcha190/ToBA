@@ -1,8 +1,10 @@
 package wordpress
 
 import (
-	"bufio"
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -24,6 +26,7 @@ const (
 	defaultAdminEmail    = "email@email.pl"
 	defaultAdminPassword = "tamago"
 	DefaultTablePrefix   = "wp_"
+	metadataHeaderLimit  = 64 * 1024
 )
 
 // Install downloads WordPress, creates wp-config.php, and performs the initial
@@ -42,23 +45,17 @@ const (
 // - creates wp-config.php
 // - performs the initial WordPress install
 func Install(runner create.CommandRunner, projectDir string, config create.ProjectConfig) error {
-	if err := runner.Run(projectDir, "lando", "wp", "core", "download", "--locale="+defaultLocale); err != nil {
-		return fmt.Errorf("wordpress download failed: %w", err)
+	setupCommands := []string{
+		"wp core download --locale=" + shellQuote(defaultLocale),
+		"wp config create " +
+			"--dbname=" + shellQuote(defaultDBName) + " " +
+			"--dbuser=" + shellQuote(defaultDBUser) + " " +
+			"--dbpass=" + shellQuote(defaultDBPassword) + " " +
+			"--dbhost=" + shellQuote(defaultDBHost) + " " +
+			"--dbcharset=" + shellQuote(defaultDBCharset),
 	}
-
-	if err := runner.Run(
-		projectDir,
-		"lando",
-		"wp",
-		"config",
-		"create",
-		"--dbname="+defaultDBName,
-		"--dbuser="+defaultDBUser,
-		"--dbpass="+defaultDBPassword,
-		"--dbhost="+defaultDBHost,
-		"--dbcharset="+defaultDBCharset,
-	); err != nil {
-		return fmt.Errorf("wp-config creation failed: %w", err)
+	if err := runLandoWPBatch(runner, projectDir, setupCommands...); err != nil {
+		return fmt.Errorf("wordpress bootstrap failed: %w", err)
 	}
 
 	if err := includeProjectConfigIfPresent(projectDir); err != nil {
@@ -153,17 +150,35 @@ func BackupSourceURL(sqlPath string) (string, error) {
 	defer file.Close()
 
 	var backupURL string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	parseLine := func(line string) error {
+		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "# Home URL:"):
-			return validateURL(strings.TrimSpace(strings.TrimPrefix(line, "# Home URL:")))
+			value, err := validateURL(strings.TrimSpace(strings.TrimPrefix(line, "# Home URL:")))
+			if err != nil {
+				return err
+			}
+			backupURL = value
+			return errStopReading
 		case backupURL == "" && strings.HasPrefix(line, "# Backup of:"):
 			backupURL = strings.TrimSpace(strings.TrimPrefix(line, "# Backup of:"))
 		}
+		return nil
 	}
-	if err := scanner.Err(); err != nil {
+
+	err = scanMetadataHeader(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
+		return "", err
+	}
+	if backupURL != "" {
+		return validateURL(backupURL)
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	err = forEachLine(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
 		return "", err
 	}
 	if backupURL == "" {
@@ -183,21 +198,44 @@ func BackupTablePrefix(sqlPath string) (string, error) {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	var tablePrefix string
+	parseLine := func(line string) error {
+		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "# Table prefix:"):
-			return normalizeTablePrefix(strings.TrimSpace(strings.TrimPrefix(line, "# Table prefix:")))
+			value, err := normalizeTablePrefix(strings.TrimSpace(strings.TrimPrefix(line, "# Table prefix:")))
+			if err != nil {
+				return err
+			}
+			tablePrefix = value
+			return errStopReading
 		case strings.HasPrefix(line, "# Table: `"), strings.HasPrefix(line, "CREATE TABLE `"), strings.HasPrefix(line, "DROP TABLE IF EXISTS `"):
 			tableName := tableNameFromLine(line)
 			if prefix, ok := tablePrefixFromTableName(tableName); ok {
-				return prefix, nil
+				tablePrefix = prefix
+				return errStopReading
 			}
 		}
+		return nil
 	}
-	if err := scanner.Err(); err != nil {
+
+	err = scanMetadataHeader(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
 		return "", err
+	}
+	if tablePrefix != "" {
+		return tablePrefix, nil
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	err = forEachLine(file, parseLine)
+	if err != nil && !errors.Is(err, errStopReading) {
+		return "", err
+	}
+	if tablePrefix != "" {
+		return tablePrefix, nil
 	}
 
 	return DefaultTablePrefix, nil
@@ -363,6 +401,51 @@ func tablePrefixFromTableName(tableName string) (string, bool) {
 	return "", false
 }
 
+var errStopReading = errors.New("stop reading")
+
+func scanMetadataHeader(file *os.File, fn func(line string) error) error {
+	return forEachLine(io.LimitReader(file, metadataHeaderLimit), fn)
+}
+
+func forEachLine(reader io.Reader, fn func(line string) error) error {
+	buf := make([]byte, 0, 64*1024)
+	lineBuf := bytes.NewBuffer(buf)
+	chunk := make([]byte, 32*1024)
+
+	for {
+		n, err := reader.Read(chunk)
+		if n > 0 {
+			start := 0
+			for i := 0; i < n; i++ {
+				if chunk[i] != '\n' {
+					continue
+				}
+
+				lineBuf.Write(chunk[start:i])
+				line := strings.TrimSuffix(lineBuf.String(), "\r")
+				lineBuf.Reset()
+				if callErr := fn(line); callErr != nil {
+					return callErr
+				}
+				start = i + 1
+			}
+			if start < n {
+				lineBuf.Write(chunk[start:n])
+			}
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				if lineBuf.Len() == 0 {
+					return nil
+				}
+				return fn(strings.TrimSuffix(lineBuf.String(), "\r"))
+			}
+			return err
+		}
+	}
+}
+
 // ResetAdminPassword resets the default local WordPress admin password, or
 // creates the default admin account when the imported database does not
 // contain it.
@@ -379,61 +462,29 @@ func tablePrefixFromTableName(tableName string) (string, bool) {
 // - may run `lando wp user create tamago ... --role=administrator --user_pass=...`
 // - may run `lando wp user update tamago --user_pass=...`
 func ResetAdminPassword(runner create.CommandRunner, projectDir string) error {
-	output, err := runner.CaptureOutput(
+	script := "" +
+		"$user = get_user_by('login', " + phpSingleQuote(defaultAdminUser) + ");" +
+		"if ($user) {" +
+		"$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => " + phpSingleQuote(defaultAdminPassword) + "));" +
+		"if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}" +
+		"exit(0);" +
+		"}" +
+		"$user_id = wp_create_user(" + phpSingleQuote(defaultAdminUser) + ", " + phpSingleQuote(defaultAdminPassword) + ", " + phpSingleQuote(defaultAdminEmail) + ");" +
+		"if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}" +
+		"$result = wp_update_user(array('ID' => $user_id, 'display_name' => " + phpSingleQuote(defaultAdminUser) + ", 'role' => 'administrator'));" +
+		"if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}"
+	_, err := runner.CaptureOutput(
 		projectDir,
 		"lando",
 		"wp",
-		"user",
-		"get",
-		defaultAdminUser,
-		"--field=ID",
+		"eval",
+		script,
 	)
 	if err != nil {
-		if !isMissingUserError(output) {
-			return fmt.Errorf("admin user lookup failed: %w", err)
-		}
-
-		if err := runner.Run(
-			projectDir,
-			"lando",
-			"wp",
-			"user",
-			"create",
-			defaultAdminUser,
-			defaultAdminEmail,
-			"--role=administrator",
-			"--user_pass="+defaultAdminPassword,
-			"--display_name="+defaultAdminUser,
-		); err != nil {
-			return fmt.Errorf("admin user creation failed: %w", err)
-		}
-
-		return nil
-	}
-
-	if strings.TrimSpace(output) == "" {
-		return fmt.Errorf("admin user lookup failed: empty response for %s", defaultAdminUser)
-	}
-
-	if err := runner.Run(
-		projectDir,
-		"lando",
-		"wp",
-		"user",
-		"update",
-		defaultAdminUser,
-		"--user_pass="+defaultAdminPassword,
-	); err != nil {
 		return fmt.Errorf("admin password reset failed: %w", err)
 	}
 
 	return nil
-}
-
-func isMissingUserError(output string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(output))
-	return strings.Contains(normalized, "invalid user id, email or login") ||
-		strings.Contains(normalized, "no valid users found")
 }
 
 // ActivateTheme activates themeName in the local WordPress installation.
@@ -470,16 +521,20 @@ func ActivateTheme(runner create.CommandRunner, projectDir string, themeName str
 // Side effects:
 // - runs `lando wp option get stylesheet` and, if needed, `template`
 func DetectImportedThemeSlug(runner create.CommandRunner, projectDir string) (string, error) {
-	for _, option := range []string{"stylesheet", "template"} {
-		value, err := runner.CaptureOutput(projectDir, "lando", "wp", "option", "get", option)
-		if err != nil {
-			return "", fmt.Errorf("theme detection failed for option %s: %w", option, err)
-		}
+	value, err := runner.CaptureOutput(
+		projectDir,
+		"lando",
+		"wp",
+		"eval",
+		"echo get_option('stylesheet') ?: get_option('template');",
+	)
+	if err != nil {
+		return "", fmt.Errorf("theme detection failed: %w", err)
+	}
 
-		slug := strings.TrimSpace(value)
-		if slug != "" {
-			return slug, nil
-		}
+	slug := strings.TrimSpace(value)
+	if slug != "" {
+		return slug, nil
 	}
 
 	return "", fmt.Errorf("theme detection failed: imported database does not expose stylesheet/template; make sure the restored database points to the imported theme and activate the theme manually if needed")
@@ -538,18 +593,39 @@ func RefreshThemeCaches(runner create.CommandRunner, projectDir string) error {
 		commands = append(commands, []string{"wp", "acorn", "acf:cache"})
 	}
 
+	commandScripts := make([]string, 0, len(commands))
 	for _, args := range commands {
 		commandName := args[len(args)-1]
-		if !acornCommandAvailable(acornList, commandName) {
-			continue
-		}
-
-		if err := runner.Run(projectDir, "lando", args...); err != nil {
-			return fmt.Errorf("theme cache refresh failed for %s: %w", strings.Join(args, " "), err)
+		if acornCommandAvailable(acornList, commandName) {
+			commandScripts = append(commandScripts, strings.Join(args, " "))
 		}
 	}
 
+	if err := runLandoWPBatch(runner, projectDir, commandScripts...); err != nil {
+		if len(commandScripts) == 1 {
+			return fmt.Errorf("theme cache refresh failed for %s: %w", commandScripts[0], err)
+		}
+		return fmt.Errorf("theme cache refresh failed for batched acorn commands: %w", err)
+	}
+
 	return nil
+}
+
+func runLandoWPBatch(runner create.CommandRunner, projectDir string, commands ...string) error {
+	if len(commands) == 0 {
+		return nil
+	}
+
+	script := "cd /app && " + strings.Join(commands, " && ")
+	return runner.Run(projectDir, "lando", "ssh", "-s", "appserver", "-c", script)
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func phpSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `\'`) + "'"
 }
 
 func acornCommandAvailable(listOutput string, command string) bool {

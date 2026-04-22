@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gotcha190/toba/internal/create"
@@ -47,10 +48,6 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 		return nil
 	}
 
-	if err := ensureRemoteWordPressRootExists(ctx, target, remoteWordPressRoot); err != nil {
-		return err
-	}
-
 	tempDir, err := makeStarterTempDir()
 	if err != nil {
 		return err
@@ -78,24 +75,28 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 		)
 	}()
 
-	sourceURL, err := captureSSHCommand(ctx, target, remoteWordPressRoot, "wp84 option get home")
-	if err != nil {
-		return err
-	}
-	sourceURL, err = normalizeSourceURL(sourceURL)
-	if err != nil {
-		return err
-	}
-
 	ctx.Logger.Info("Preparing starter files on SSH host " + ctx.Config.SSHTarget)
-	if err := runSSHCommand(ctx, target, remoteWordPressRoot, "wp84 db export "+shellQuote(pathBase(remoteDatabase))); err != nil {
-		return err
+	sourceURL, err := captureSSHCommand(
+		ctx,
+		target,
+		"",
+		remoteStarterPreparationScript(remoteWordPressRoot, remoteDatabase, remotePlugins, remoteUploads),
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "__TOBA_REMOTE_ROOT_MISSING__") {
+			return fmt.Errorf(
+				"remote WordPress root %q does not exist on %s:%s; update TOBA_REMOTE_WORDPRESS_ROOT in the global config or pass --remote-wordpress-root",
+				remoteWordPressRoot,
+				target.UserHost,
+				target.Port,
+			)
+		}
+		return fmt.Errorf("failed to prepare remote starter files on %s:%s: %w", target.UserHost, target.Port, err)
 	}
 	createdRemoteArtifacts = true
-	if err := runSSHCommand(ctx, target, filepath.Join(remoteWordPressRoot, "wp-content"), "zip -r -q ../"+shellQuote(pathBase(remotePlugins))+" plugins"); err != nil {
-		return err
-	}
-	if err := runSSHCommand(ctx, target, filepath.Join(remoteWordPressRoot, "wp-content"), "zip -r -q -0 ../"+shellQuote(pathBase(remoteUploads))+" . -i "+shellQuote("uploads/*")); err != nil {
+
+	sourceURL, err = normalizeSourceURL(sourceURL)
+	if err != nil {
 		return err
 	}
 
@@ -104,15 +105,25 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 	localUploads := filepath.Join(tempDir, "uploads", pathBase(remoteUploads))
 
 	ctx.Logger.Info("Downloading starter database over SSH")
-	if err := copyRemoteFile(ctx, target, remoteDatabase, localDatabase); err != nil {
-		return err
-	}
 	ctx.Logger.Info("Downloading starter plugins over SSH")
-	if err := copyRemoteFile(ctx, target, remotePlugins, localPlugins); err != nil {
-		return err
-	}
 	ctx.Logger.Info("Downloading starter uploads over SSH")
-	if err := copyRemoteFile(ctx, target, remoteUploads, localUploads); err != nil {
+	if err := downloadRemoteStarterFiles(ctx, target, []remoteStarterDownload{
+		{
+			name:       "database",
+			remotePath: remoteDatabase,
+			localPath:  localDatabase,
+		},
+		{
+			name:       "plugins",
+			remotePath: remotePlugins,
+			localPath:  localPlugins,
+		},
+		{
+			name:       "uploads",
+			remotePath: remoteUploads,
+			localPath:  localUploads,
+		},
+	}); err != nil {
 		return err
 	}
 
@@ -125,6 +136,53 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 		SourceURL:    sourceURL,
 	}
 	return nil
+}
+
+type remoteStarterDownload struct {
+	name       string
+	remotePath string
+	localPath  string
+}
+
+func downloadRemoteStarterFiles(ctx *create.Context, target sshTarget, downloads []remoteStarterDownload) error {
+	var once sync.Once
+	var runErr error
+	var wg sync.WaitGroup
+
+	for _, download := range downloads {
+		download := download
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			if err := copyRemoteFile(ctx, target, download.remotePath, download.localPath); err != nil {
+				once.Do(func() {
+					runErr = fmt.Errorf("failed to download starter %s over SSH: %w", download.name, err)
+				})
+			}
+		}()
+	}
+
+	wg.Wait()
+	return runErr
+}
+
+func remoteStarterPreparationScript(remoteWordPressRoot string, remoteDatabase string, remotePlugins string, remoteUploads string) string {
+	return strings.Join([]string{
+		"set -eu",
+		"if [ ! -d " + shellQuote(remoteWordPressRoot) + " ]; then printf '%s\\n' " + shellQuote("__TOBA_REMOTE_ROOT_MISSING__") + "; exit 42; fi",
+		"cleanup_on_error() { status=$?; if [ \"$status\" -ne 0 ]; then rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + "; fi; exit \"$status\"; }",
+		"cleanup_on_signal() { rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + "; exit 130; }",
+		"trap cleanup_on_error EXIT",
+		"trap cleanup_on_signal HUP INT TERM",
+		"cd " + shellQuote(remoteWordPressRoot),
+		"source_url=$(wp84 option get home)",
+		"wp84 db export " + shellQuote(pathBase(remoteDatabase)) + " >/dev/null",
+		"cd wp-content",
+		"zip -r -q ../" + shellQuote(pathBase(remotePlugins)) + " plugins",
+		"zip -r -q -0 ../" + shellQuote(pathBase(remoteUploads)) + " . -i " + shellQuote("uploads/*"),
+		"printf '%s\\n' \"$source_url\"",
+	}, "; ")
 }
 
 func ensureRemoteWordPressRootExists(ctx *create.Context, target sshTarget, remoteWordPressRoot string) error {
@@ -165,14 +223,23 @@ func ensureRemoteWordPressRootExists(ctx *create.Context, target sshTarget, remo
 // - a normalized URL string
 // - an error when the URL is missing a scheme or host
 func normalizeSourceURL(raw string) (string, error) {
-	trimmed := strings.TrimSpace(raw)
-	parsed, err := url.Parse(trimmed)
-	if err != nil {
-		return "", err
-	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("invalid remote WordPress home URL: %s", raw)
+	lines := strings.Split(raw, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(lines[i])
+		if candidate == "" {
+			continue
+		}
+
+		parsed, err := url.Parse(candidate)
+		if err != nil {
+			continue
+		}
+		if parsed.Scheme == "" || parsed.Host == "" {
+			continue
+		}
+
+		return parsed.String(), nil
 	}
 
-	return parsed.String(), nil
+	return "", fmt.Errorf("invalid remote WordPress home URL: %s", raw)
 }

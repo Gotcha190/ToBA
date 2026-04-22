@@ -86,9 +86,8 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 		}
 		return r.homeURL + "\n", nil
 	}
-	if cmd == "lando" && len(args) == 4 && args[0] == "wp" && args[1] == "option" && args[2] == "get" {
-		switch args[3] {
-		case "stylesheet", "template":
+	if cmd == "lando" && len(args) == 3 && args[0] == "wp" && args[1] == "eval" {
+		if strings.Contains(args[2], "get_option('stylesheet') ?: get_option('template')") {
 			return "toet\n", nil
 		}
 	}
@@ -133,12 +132,12 @@ func TestRunCreateCreatesProjectSkeletonFromSSHStarter(t *testing.T) {
 	assertHasCommand(t, runner.commands, "ssh", []string{"-p", "22", "user@192.168.0.1", "dynamic:home"})
 	assertHasCommand(t, runner.commands, "scp", []string{"-P", "22", "dynamic:remote-sql", "dynamic:local-sql"})
 	assertHasCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
-	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install"})
-	assertHasCommand(t, runner.commands, "npm", []string{"i"})
+	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"})
+	assertHasCommand(t, runner.commands, "npm", []string{"ci", "--no-audit", "--no-fund"})
 	assertHasCommand(t, runner.commands, "npm", []string{"run", "build"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "demo"})
 	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 2)
-	assertNoCommand(t, runner.commands, "lando", []string{"wp", "option", "get", "stylesheet"})
+	assertNoCommand(t, runner.commands, "lando", []string{"wp", "eval", "echo get_option('stylesheet') ?: get_option('template');"})
 }
 
 func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
@@ -193,7 +192,7 @@ func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
 	assertNoCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
 	assertNoCommand(t, runner.commands, "lando", []string{"composer", "install"})
 	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 0)
-	assertHasCommand(t, runner.commands, "lando", []string{"wp", "option", "get", "stylesheet"})
+	assertHasCommand(t, runner.commands, "lando", []string{"wp", "eval", "echo get_option('stylesheet') ?: get_option('template');"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "toet"})
 }
 
@@ -740,7 +739,7 @@ func argsMatch(actual []string, expected []string) bool {
 func matchesDynamicArg(actual string, pattern string) bool {
 	switch pattern {
 	case "home":
-		return strings.HasPrefix(actual, "cd '"+testRemoteWordPressRoot+"' && wp84 option get home")
+		return strings.Contains(actual, "wp84 option get home") && strings.Contains(actual, "'"+testRemoteWordPressRoot+"'")
 	case "remote-sql":
 		return strings.HasPrefix(actual, "user@192.168.0.1:"+testRemoteWordPressRoot+"/") && strings.HasSuffix(actual, ".sql")
 	case "local-sql":

@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -32,7 +31,7 @@ type ExecRunner struct{}
 // - launches a child process
 // - writes command output to the current process streams
 func (r ExecRunner) Run(dir string, cmd string, args ...string) error {
-	command := shellCommand(dir, cmd, args...)
+	command := execCommand(dir, cmd, args...)
 	command.Env = withWorkingDirEnv(dir)
 
 	var stdout bytes.Buffer
@@ -60,7 +59,7 @@ func (r ExecRunner) Run(dir string, cmd string, args ...string) error {
 // - the captured stdout output on success, or stderr/stdout content on failure
 // - an error when the command exits unsuccessfully
 func (r ExecRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	command := shellCommand(dir, cmd, args...)
+	command := execCommand(dir, cmd, args...)
 	command.Env = withWorkingDirEnv(dir)
 
 	var stdout bytes.Buffer
@@ -127,7 +126,7 @@ func withWorkingDirEnv(dir string) []string {
 	return append(env, pwdPrefix+dir)
 }
 
-// shellCommand builds a bash command that runs cmd with args inside dir.
+// execCommand builds an exec.Cmd that runs cmd with args inside dir.
 //
 // Parameters:
 // - dir: working directory for the command
@@ -135,46 +134,13 @@ func withWorkingDirEnv(dir string) []string {
 // - args: program arguments
 //
 // Returns:
-// - an exec.Cmd configured to run the generated shell script
-func shellCommand(dir string, cmd string, args ...string) *exec.Cmd {
-	script := buildShellScript(dir, cmd, args...)
-	return exec.Command("bash", "-lc", script)
-}
-
-// buildShellScript assembles the shell script used by ExecRunner, including an
-// initial directory change when dir is set.
-//
-// Parameters:
-// - dir: optional working directory
-// - cmd: program name
-// - args: command arguments
-//
-// Returns:
-// - a shell-safe script string executed by bash -lc
-func buildShellScript(dir string, cmd string, args ...string) string {
-	parts := make([]string, 0, len(args)+1)
-	parts = append(parts, shellQuote(cmd))
-	for _, arg := range args {
-		parts = append(parts, shellQuote(arg))
+// - an exec.Cmd configured for direct process execution
+func execCommand(dir string, cmd string, args ...string) *exec.Cmd {
+	command := exec.Command(cmd, args...)
+	if dir != "" {
+		command.Dir = dir
 	}
-
-	if dir == "" {
-		return strings.Join(parts, " ")
-	}
-
-	return "cd " + shellQuote(filepath.Clean(dir)) + " && " + strings.Join(parts, " ")
-}
-
-// shellQuote escapes a string for safe inclusion in a single-quoted shell
-// script fragment.
-//
-// Parameters:
-// - value: raw string that will be embedded in the shell script
-//
-// Returns:
-// - a safely quoted shell fragment
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+	return command
 }
 
 type NoopRunner struct{}
