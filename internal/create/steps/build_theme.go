@@ -43,7 +43,7 @@ func (s *BuildThemeStep) Name() string {
 //
 // Side effects:
 // - may run `lando composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress`
-// - may run `npm ci --no-audit --no-fund`
+// - may run `npm ci --no-audit --no-fund`, falling back to `npm install --no-audit --no-fund`
 // - may run `npm run build`
 // - writes dry-run messages instead of executing commands when dry-run mode is enabled
 func (s *BuildThemeStep) Run(ctx *create.Context) error {
@@ -57,6 +57,7 @@ func (s *BuildThemeStep) Run(ctx *create.Context) error {
 	if ctx.DryRun {
 		ctx.Logger.Info("Would run in parallel: lando composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress")
 		ctx.Logger.Info("Would run in parallel: npm ci --no-audit --no-fund")
+		ctx.Logger.Info("Would fall back to: npm install --no-audit --no-fund")
 		ctx.Logger.Info("Would then run: npm run build")
 		return nil
 	}

@@ -76,23 +76,36 @@ func Install(runner create.CommandRunner, themesDir string, starterRepo string, 
 //
 // Side effects:
 // - runs `lando composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress`
-// - runs `npm ci --no-audit --no-fund`
+// - runs `npm ci --no-audit --no-fund`, falling back to `npm install --no-audit --no-fund`
 // - runs `npm run build`
 func Build(runner create.CommandRunner, themeDir string) error {
 	installErrors := make(chan error, 2)
 	var waitGroup sync.WaitGroup
 
-	for _, command := range installCommands() {
-		waitGroup.Add(1)
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
 
-		go func(command buildCommand) {
-			defer waitGroup.Done()
+		composerCommand := composerInstallCommand()
+		if err := runner.Run(themeDir, composerCommand.cmd, composerCommand.args...); err != nil {
+			installErrors <- wrapBuildError("lando", err)
+		}
+	}()
 
-			if err := runner.Run(themeDir, command.cmd, command.args...); err != nil {
-				installErrors <- wrapBuildError(command.cmd, err)
-			}
-		}(command)
-	}
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+
+		npmCommand := npmInstallCommand()
+		if err := runner.Run(themeDir, npmCommand.cmd, npmCommand.args...); err == nil {
+			return
+		}
+
+		npmFallbackCommand := npmInstallFallbackCommand()
+		if fallbackErr := runner.Run(themeDir, npmFallbackCommand.cmd, npmFallbackCommand.args...); fallbackErr != nil {
+			installErrors <- wrapBuildError("npm", fallbackErr)
+		}
+	}()
 
 	waitGroup.Wait()
 	close(installErrors)
@@ -111,16 +124,24 @@ func Build(runner create.CommandRunner, themeDir string) error {
 	return nil
 }
 
-func installCommands() []buildCommand {
-	return []buildCommand{
-		{
-			cmd:  "lando",
-			args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
-		},
-		{
-			cmd:  "npm",
-			args: []string{"ci", "--no-audit", "--no-fund"},
-		},
+func composerInstallCommand() buildCommand {
+	return buildCommand{
+		cmd:  "lando",
+		args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
+	}
+}
+
+func npmInstallCommand() buildCommand {
+	return buildCommand{
+		cmd:  "npm",
+		args: []string{"ci", "--no-audit", "--no-fund"},
+	}
+}
+
+func npmInstallFallbackCommand() buildCommand {
+	return buildCommand{
+		cmd:  "npm",
+		args: []string{"install", "--no-audit", "--no-fund"},
 	}
 }
 

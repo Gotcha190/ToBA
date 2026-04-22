@@ -22,6 +22,7 @@ type fakeRunner struct {
 	mu       sync.Mutex
 	commands []recordedCommand
 	err      error
+	runErr   map[string]error
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
@@ -34,6 +35,12 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 	r.mu.Unlock()
 	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
 		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
+			return err
+		}
+	}
+	if r.runErr != nil {
+		key := strings.Join(append([]string{cmd}, args...), " ")
+		if err, ok := r.runErr[key]; ok {
 			return err
 		}
 	}
@@ -123,6 +130,37 @@ func TestBuildRunsExpectedCommands(t *testing.T) {
 	}
 }
 
+func TestBuildFallsBackToNpmInstallWhenNpmCiFails(t *testing.T) {
+	runner := &fakeRunner{
+		runErr: map[string]error{
+			"npm ci --no-audit --no-fund": errors.New("broken lockfile"),
+		},
+	}
+	themeDir := "/tmp/demo-theme"
+
+	if err := Build(runner, themeDir); err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	expectedFallback := recordedCommand{
+		dir:  themeDir,
+		cmd:  "npm",
+		args: []string{"install", "--no-audit", "--no-fund"},
+	}
+	if !containsRecordedCommand(runner.commands, expectedFallback) {
+		t.Fatalf("expected fallback command %#v in %#v", expectedFallback, runner.commands)
+	}
+
+	expectedBuild := recordedCommand{
+		dir:  themeDir,
+		cmd:  "npm",
+		args: []string{"run", "build"},
+	}
+	if !reflect.DeepEqual(runner.commands[len(runner.commands)-1], expectedBuild) {
+		t.Fatalf("unexpected final build command:\nexpected: %#v\ngot: %#v", expectedBuild, runner.commands[len(runner.commands)-1])
+	}
+}
+
 func TestBuildReturnsCommandError(t *testing.T) {
 	expectedErr := errors.New("boom")
 	runner := &fakeRunner{err: expectedErr}
@@ -130,6 +168,22 @@ func TestBuildReturnsCommandError(t *testing.T) {
 	err := Build(runner, "/tmp/demo-theme")
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf("expected %v, got %v", expectedErr, err)
+	}
+}
+
+func TestBuildReturnsFallbackErrorWhenNpmCiAndInstallFail(t *testing.T) {
+	ciErr := errors.New("ci failed")
+	installErr := errors.New("install failed")
+	runner := &fakeRunner{
+		runErr: map[string]error{
+			"npm ci --no-audit --no-fund":      ciErr,
+			"npm install --no-audit --no-fund": installErr,
+		},
+	}
+
+	err := Build(runner, "/tmp/demo-theme")
+	if !errors.Is(err, installErr) {
+		t.Fatalf("expected %v, got %v", installErr, err)
 	}
 }
 
