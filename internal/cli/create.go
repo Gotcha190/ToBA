@@ -122,46 +122,25 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	}()
 
 	pipeline := create.Pipeline{
-		Stages: []create.Stage{
-			{
-				Name: "bootstrap",
-				Steps: []create.Step{
-					steps.NewCollectConfigStep(),
-					steps.NewPrepareStarterDataStep(),
-					steps.NewProjectDirStep(),
-					steps.NewGenerateLandoConfigStep(),
-					steps.NewStartLandoStep(),
-					steps.NewInstallWordPressStep(),
-				},
-			},
-			{
-				Name:     "restore-primary",
-				Parallel: true,
-				Steps: []create.Step{
-					steps.NewInstallThemeStep(),
-					steps.NewImportPluginsStep(),
-					steps.NewImportUploadsStep(),
-					steps.NewImportDatabaseStep(),
-				},
-			},
-			{
-				Name: "restore-secondary",
-				Steps: []create.Step{
-					steps.NewBuildThemeStep(),
-					steps.NewImportOthersStep(),
-				},
-			},
-			{
-				Name: "finalize",
-				Steps: []create.Step{
-					steps.NewResetAdminPasswordStep(),
-					steps.NewActivateThemeStep(),
-					steps.NewGenerateAcornKeyStep(),
-					steps.NewClearImportedCachesStep(),
-					steps.NewFlushRewriteRulesStep(),
-					steps.NewRefreshThemeCachesStep(),
-				},
-			},
+		Nodes: []create.StepNode{
+			{ID: "collect-config", Step: steps.NewCollectConfigStep()},
+			{ID: "prepare-starter-data", Step: steps.NewPrepareStarterDataStep(), DependsOn: []string{"collect-config"}},
+			{ID: "project-dir", Step: steps.NewProjectDirStep(), DependsOn: []string{"prepare-starter-data"}},
+			{ID: "generate-lando-config", Step: steps.NewGenerateLandoConfigStep(), DependsOn: []string{"project-dir"}},
+			{ID: "start-lando", Step: steps.NewStartLandoStep(), DependsOn: []string{"generate-lando-config"}},
+			{ID: "install-theme", Step: steps.NewInstallThemeStep(), DependsOn: []string{"project-dir"}},
+			{ID: "import-plugins", Step: steps.NewImportPluginsStep(), DependsOn: []string{"project-dir"}},
+			{ID: "import-uploads", Step: steps.NewImportUploadsStep(), DependsOn: []string{"project-dir"}},
+			{ID: "import-others", Step: steps.NewImportOthersStep(), DependsOn: []string{"install-theme", "import-plugins", "import-uploads"}},
+			{ID: "install-wordpress", Step: steps.NewInstallWordPressStep(), DependsOn: []string{"start-lando"}},
+			{ID: "build-theme", Step: steps.NewBuildThemeStep(), DependsOn: []string{"start-lando", "install-theme"}},
+			{ID: "import-database", Step: steps.NewImportDatabaseStep(), DependsOn: []string{"install-wordpress"}},
+			{ID: "reset-admin-password", Step: steps.NewResetAdminPasswordStep(), DependsOn: []string{"import-database"}},
+			{ID: "activate-theme", Step: steps.NewActivateThemeStep(), DependsOn: []string{"import-database", "install-theme", "build-theme"}},
+			{ID: "generate-acorn-key", Step: steps.NewGenerateAcornKeyStep(), DependsOn: []string{"activate-theme"}},
+			{ID: "clear-imported-caches", Step: steps.NewClearImportedCachesStep(), DependsOn: []string{"import-database"}},
+			{ID: "flush-rewrite-rules", Step: steps.NewFlushRewriteRulesStep(), DependsOn: []string{"activate-theme"}},
+			{ID: "refresh-theme-caches", Step: steps.NewRefreshThemeCachesStep(), DependsOn: []string{"generate-acorn-key", "clear-imported-caches", "flush-rewrite-rules", "import-others"}},
 		},
 	}
 
