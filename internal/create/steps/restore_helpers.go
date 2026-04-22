@@ -65,10 +65,16 @@ func restoreLocalZips(ctx *create.Context, archivePaths []string, destination st
 		return nil
 	}
 
+	if len(archivePaths) == 1 {
+		return restoreLocalZip(ctx, archivePaths[0], destination, label)
+	}
+
+	if err := project.ExtractZipFiles(archivePaths, destination); err != nil {
+		return fmt.Errorf("extract %s archives: %w", label, err)
+	}
+
 	for _, archivePath := range archivePaths {
-		if err := restoreLocalZip(ctx, archivePath, destination, label); err != nil {
-			return err
-		}
+		ctx.Logger.Info("Extracted: " + archivePath)
 	}
 
 	return nil
