@@ -51,6 +51,10 @@ func (s *PrepareStarterDataStep) Name() string {
 // - mutates ctx.StarterData and ctx.UseExistingProjectDir
 // - reads the filesystem to detect an existing project directory
 func (s *PrepareStarterDataStep) Run(ctx *create.Context) error {
+	if ctx.StarterData.Mode == starterDataModeRemote {
+		return prepareRemoteStarterData(ctx)
+	}
+
 	rootInfo, err := os.Stat(ctx.Paths.Root)
 	switch {
 	case err == nil && rootInfo.IsDir():

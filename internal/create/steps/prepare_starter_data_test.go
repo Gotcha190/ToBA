@@ -183,9 +183,18 @@ func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testin
 	assertStarterCommandContains(t, runner.commands, "ssh", "zip -r -q ../")
 	assertStarterCommandContains(t, runner.commands, "ssh", "zip -r -q -0 ../")
 	assertStarterCommandContains(t, runner.commands, "ssh", "-i 'uploads/*'")
-	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 option get home")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 option get home >")
 	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 db export")
 	assertStarterCommandContains(t, runner.commands, "ssh", ">/dev/null")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_source=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_db=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_plugins=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_uploads=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_source\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_db\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_plugins\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_uploads\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "cat ")
 }
 
 func TestPrepareStarterDataParsesLastRemoteOutputLineAsSourceURL(t *testing.T) {

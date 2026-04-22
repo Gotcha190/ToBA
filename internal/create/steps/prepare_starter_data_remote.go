@@ -58,20 +58,21 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 	remoteDatabase := filepath.Join(remoteWordPressRoot, prefix+".sql")
 	remotePlugins := filepath.Join(remoteWordPressRoot, prefix+"-plugins.zip")
 	remoteUploads := filepath.Join(remoteWordPressRoot, prefix+"-uploads.zip")
+	remoteSourceURL := filepath.Join(remoteWordPressRoot, prefix+"-home.txt")
 	createdRemoteArtifacts := false
 	defer func() {
 		if !createdRemoteArtifacts {
 			return
 		}
 
-		cleanupErr := runSSHCommand(ctx, target, remoteWordPressRoot, "rm -f "+shellQuote(pathBase(remoteDatabase))+" "+shellQuote(pathBase(remotePlugins))+" "+shellQuote(pathBase(remoteUploads)))
+		cleanupErr := runSSHCommand(ctx, target, remoteWordPressRoot, "rm -f "+shellQuote(pathBase(remoteDatabase))+" "+shellQuote(pathBase(remotePlugins))+" "+shellQuote(pathBase(remoteUploads))+" "+shellQuote(pathBase(remoteSourceURL)))
 		if cleanupErr == nil {
 			return
 		}
 
 		ctx.Logger.Warning(
 			"Failed to clean remote starter artifacts on " + target.UserHost + ":" + target.Port + ". " +
-				"Remove manually if needed: " + pathBase(remoteDatabase) + ", " + pathBase(remotePlugins) + ", " + pathBase(remoteUploads) + ". Error: " + cleanupErr.Error(),
+				"Remove manually if needed: " + pathBase(remoteDatabase) + ", " + pathBase(remotePlugins) + ", " + pathBase(remoteUploads) + ", " + pathBase(remoteSourceURL) + ". Error: " + cleanupErr.Error(),
 		)
 	}()
 
@@ -80,7 +81,7 @@ func prepareRemoteStarterData(ctx *create.Context) (runErr error) {
 		ctx,
 		target,
 		"",
-		remoteStarterPreparationScript(remoteWordPressRoot, remoteDatabase, remotePlugins, remoteUploads),
+		remoteStarterPreparationScript(remoteWordPressRoot, remoteDatabase, remotePlugins, remoteUploads, remoteSourceURL),
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "__TOBA_REMOTE_ROOT_MISSING__") {
@@ -167,21 +168,24 @@ func downloadRemoteStarterFiles(ctx *create.Context, target sshTarget, downloads
 	return runErr
 }
 
-func remoteStarterPreparationScript(remoteWordPressRoot string, remoteDatabase string, remotePlugins string, remoteUploads string) string {
+func remoteStarterPreparationScript(remoteWordPressRoot string, remoteDatabase string, remotePlugins string, remoteUploads string, remoteSourceURL string) string {
 	return strings.Join([]string{
 		"set -eu",
 		"if [ ! -d " + shellQuote(remoteWordPressRoot) + " ]; then printf '%s\\n' " + shellQuote("__TOBA_REMOTE_ROOT_MISSING__") + "; exit 42; fi",
-		"cleanup_on_error() { status=$?; if [ \"$status\" -ne 0 ]; then rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + "; fi; exit \"$status\"; }",
-		"cleanup_on_signal() { rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + "; exit 130; }",
+		"cleanup_on_error() { status=$?; if [ \"$status\" -ne 0 ]; then rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + " " + shellQuote(remoteSourceURL) + "; fi; exit \"$status\"; }",
+		"cleanup_on_signal() { rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + " " + shellQuote(remoteSourceURL) + "; exit 130; }",
 		"trap cleanup_on_error EXIT",
 		"trap cleanup_on_signal HUP INT TERM",
 		"cd " + shellQuote(remoteWordPressRoot),
-		"source_url=$(wp84 option get home)",
-		"wp84 db export " + shellQuote(pathBase(remoteDatabase)) + " >/dev/null",
-		"cd wp-content",
-		"zip -r -q ../" + shellQuote(pathBase(remotePlugins)) + " plugins",
-		"zip -r -q -0 ../" + shellQuote(pathBase(remoteUploads)) + " . -i " + shellQuote("uploads/*"),
-		"printf '%s\\n' \"$source_url\"",
+		"wp84 option get home > " + shellQuote(pathBase(remoteSourceURL)) + " & pid_source=$!",
+		"wp84 db export " + shellQuote(pathBase(remoteDatabase)) + " >/dev/null & pid_db=$!",
+		"(cd wp-content && zip -r -q ../" + shellQuote(pathBase(remotePlugins)) + " plugins) & pid_plugins=$!",
+		"(cd wp-content && zip -r -q -0 ../" + shellQuote(pathBase(remoteUploads)) + " . -i " + shellQuote("uploads/*") + ") & pid_uploads=$!",
+		"wait \"$pid_source\"",
+		"wait \"$pid_db\"",
+		"wait \"$pid_plugins\"",
+		"wait \"$pid_uploads\"",
+		"cat " + shellQuote(pathBase(remoteSourceURL)),
 	}, "; ")
 }
 
