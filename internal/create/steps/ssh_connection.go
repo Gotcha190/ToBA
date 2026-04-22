@@ -128,6 +128,7 @@ func copyRemoteFile(ctx *create.Context, target sshTarget, remotePath string, lo
 	}
 
 	if err := ctx.Runner.Run("", "scp", "-P", target.Port, target.UserHost+":"+remotePath, localPath); err != nil {
+		_ = os.Remove(localPath)
 		return fmt.Errorf("failed to download starter file from %s:%s: %w", target.UserHost, target.Port, err)
 	}
 
@@ -144,6 +145,10 @@ func copyRemoteFile(ctx *create.Context, target sshTarget, remotePath string, lo
 // Returns:
 // - a combined remote shell command string
 func remoteScript(remoteDir string, script string) string {
+	if strings.TrimSpace(remoteDir) == "" {
+		return script
+	}
+
 	return "cd " + shellQuote(remoteDir) + " && " + script
 }
 
