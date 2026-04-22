@@ -4,15 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/gotcha190/toba/internal/create"
 )
-
-type buildCommand struct {
-	cmd  string
-	args []string
-}
 
 type MissingStarterRepoError struct{}
 
@@ -107,17 +101,11 @@ func Build(runner create.CommandRunner, themeDir string) error {
 		}
 	}()
 
-	waitGroup.Wait()
-	close(installErrors)
-
-	for err := range installErrors {
-		if err != nil {
-			return err
-		}
+	if err := runner.Run(themeDir, "npm", "i"); err != nil {
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme npm install failed", err)
 	}
 
-	buildCommand := buildThemeCommand()
-	if err := runner.Run(themeDir, buildCommand.cmd, buildCommand.args...); err != nil {
+	if err := runner.Run(themeDir, "npm", "run", "build"); err != nil {
 		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme build failed", err)
 	}
 

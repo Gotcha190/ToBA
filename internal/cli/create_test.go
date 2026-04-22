@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/gotcha190/toba/internal/create"
@@ -22,7 +21,6 @@ type recordedCommand struct {
 }
 
 type fakeRunner struct {
-	mu                  sync.Mutex
 	commands            []recordedCommand
 	runErr              error
 	runErrByCommand     map[string]error
@@ -33,13 +31,11 @@ type fakeRunner struct {
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
-	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
-	r.mu.Unlock()
 	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
 		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
 			return err
@@ -62,14 +58,11 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 }
 
 func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
-	r.mu.Unlock()
-
 	if r.captureErrByCommand != nil {
 		if err, ok := r.captureErrByCommand[cmd+" "+strings.Join(args, " ")]; ok {
 			return "", err
@@ -87,15 +80,11 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 		}
 		return r.homeURL + "\n", nil
 	}
-	if cmd == "lando" && len(args) == 5 && args[0] == "wp" && args[1] == "user" && args[2] == "get" && args[3] == "tamago" && args[4] == "--field=ID" {
-		return "1\n", nil
-	}
 	if cmd == "lando" && len(args) == 3 && args[0] == "wp" && args[1] == "eval" {
 		if strings.Contains(args[2], "get_option('stylesheet') ?: get_option('template')") {
 			return "toet\n", nil
 		}
 	}
-
 	return "", nil
 }
 
@@ -134,8 +123,8 @@ func TestRunCreateCreatesProjectSkeletonFromSSHStarter(t *testing.T) {
 	assertHasCommand(t, runner.commands, "ssh", []string{"-p", "22", "user@192.168.0.1", "dynamic:home"})
 	assertHasCommand(t, runner.commands, "scp", []string{"-P", "22", "dynamic:remote-sql", "dynamic:local-sql"})
 	assertHasCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
-	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"})
-	assertHasCommand(t, runner.commands, "npm", []string{"ci", "--no-audit", "--no-fund"})
+	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install"})
+	assertHasCommand(t, runner.commands, "npm", []string{"i"})
 	assertHasCommand(t, runner.commands, "npm", []string{"run", "build"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "demo"})
 	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 2)
