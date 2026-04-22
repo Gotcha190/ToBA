@@ -49,7 +49,7 @@ func RenderConfig(config create.ProjectConfig) ([]byte, error) {
 // Side effects:
 // - starts the local Lando app
 func Start(runner create.CommandRunner, projectDir string) error {
-	if err := runner.Run(projectDir, "lando", "start"); err != nil {
+	if _, err := runner.CaptureOutput(projectDir, "lando", "start"); err != nil {
 		return create.NewCodedError("LANDO_START_FAILED", "lando start failed", err)
 	}
 

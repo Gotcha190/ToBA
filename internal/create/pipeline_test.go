@@ -211,6 +211,115 @@ func TestPipelineParallelStageWaitsForAllStepsAndReturnsFirstStageError(t *testi
 	}
 }
 
+func TestPipelineDependencyGraphStartsReadyDependentsWithoutWaitingForWholeLayer(t *testing.T) {
+	logger := &recordingLogger{}
+
+	startLandoDone := make(chan struct{})
+	fileRestoreRelease := make(chan struct{})
+	started := make(chan string, 4)
+
+	pipeline := Pipeline{
+		Nodes: []StepNode{
+			{ID: "project-dir", Step: gatedStep{name: "project-dir", started: started}},
+			{ID: "start-lando", Step: gatedStep{name: "start-lando", started: started, release: startLandoDone}, DependsOn: []string{"project-dir"}},
+			{ID: "import-uploads", Step: gatedStep{name: "import-uploads", started: started, release: fileRestoreRelease}, DependsOn: []string{"project-dir"}},
+			{ID: "install-wordpress", Step: gatedStep{name: "install-wordpress", started: started}, DependsOn: []string{"start-lando"}},
+		},
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- pipeline.Run(&Context{Logger: logger})
+	}()
+
+	for range 3 {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for initial nodes to start")
+		}
+	}
+
+	close(startLandoDone)
+
+	select {
+	case name := <-started:
+		if name != "install-wordpress" {
+			t.Fatalf("expected install-wordpress to start next, got %s", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for dependency to start")
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("pipeline finished too early: %v", err)
+	default:
+	}
+
+	close(fileRestoreRelease)
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("unexpected pipeline error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pipeline completion")
+	}
+}
+
+func TestPipelineDependencyGraphWaitsForRunningNodesAfterError(t *testing.T) {
+	logger := &recordingLogger{}
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	expectedErr := errors.New("boom")
+
+	pipeline := Pipeline{
+		Nodes: []StepNode{
+			{ID: "fast-fail", Step: gatedStep{name: "fast-fail", started: started, err: expectedErr}},
+			{ID: "slow-runner", Step: gatedStep{name: "slow-runner", started: started, release: release}},
+			{ID: "never-start", Step: gatedStep{name: "never-start", started: started}, DependsOn: []string{"slow-runner"}},
+		},
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- pipeline.Run(&Context{Logger: logger})
+	}()
+
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for running nodes")
+		}
+	}
+
+	select {
+	case name := <-started:
+		t.Fatalf("unexpected extra started node: %s", name)
+	default:
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("pipeline returned before slow running node finished: %v", err)
+	default:
+	}
+
+	close(release)
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("expected %v, got %v", expectedErr, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pipeline completion")
+	}
+}
+
 func TestSynchronizedLoggerSerializesConcurrentWrites(t *testing.T) {
 	base := &concurrencyProbeLogger{}
 	logger := newSynchronizedLogger(base)

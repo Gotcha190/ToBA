@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -621,6 +622,43 @@ func TestRunCreateFailsForProjectNameWithSpaces(t *testing.T) {
 	}
 }
 
+func TestBuildCreatePipelineOverlapsRemoteBootstrapWhenProjectDirDoesNotExist(t *testing.T) {
+	baseDir := t.TempDir()
+
+	pipeline := buildCreatePipeline(baseDir, create.ProjectConfig{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	})
+
+	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"collect-config"})
+	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir"})
+	assertNodeDependsOn(t, pipeline.Nodes, "import-plugins", []string{"project-dir", "prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
+	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data"})
+}
+
+func TestBuildCreatePipelineKeepsPrepareStarterDataAheadOfProjectDirForExistingProject(t *testing.T) {
+	baseDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(baseDir, "demo"), 0755); err != nil {
+		t.Fatalf("failed to prepare existing project dir: %v", err)
+	}
+
+	pipeline := buildCreatePipeline(baseDir, create.ProjectConfig{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	})
+
+	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir", "prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
+}
+
 func assertProjectSkeleton(t *testing.T, paths create.ProjectPaths) {
 	t.Helper()
 
@@ -734,6 +772,22 @@ func argsMatch(actual []string, expected []string) bool {
 	}
 
 	return true
+}
+
+func assertNodeDependsOn(t *testing.T, nodes []create.StepNode, id string, expected []string) {
+	t.Helper()
+
+	for _, node := range nodes {
+		if node.ID != id {
+			continue
+		}
+		if !reflect.DeepEqual(node.DependsOn, expected) {
+			t.Fatalf("unexpected dependencies for %s:\nexpected: %#v\ngot: %#v", id, expected, node.DependsOn)
+		}
+		return
+	}
+
+	t.Fatalf("expected node %s in %#v", id, nodes)
 }
 
 func matchesDynamicArg(actual string, pattern string) bool {
