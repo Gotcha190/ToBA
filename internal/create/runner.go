@@ -3,7 +3,6 @@ package create
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -37,8 +36,8 @@ func (r ExecRunner) Run(dir string, cmd string, args ...string) error {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	command.Stdin = os.Stdin
-	command.Stdout = io.MultiWriter(os.Stdout, &stdout)
-	command.Stderr = io.MultiWriter(os.Stderr, &stderr)
+	command.Stdout = &stdout
+	command.Stderr = &stderr
 
 	if err := command.Run(); err != nil {
 		return formatCommandError(dir, cmd, args, err, stdout.String(), stderr.String())
