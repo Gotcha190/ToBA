@@ -52,6 +52,19 @@ func TestExecRunnerRunSupportsExplicitShellCommands(t *testing.T) {
 	}
 }
 
+func TestExecRunnerRunCapturesCommandOutputInErrors(t *testing.T) {
+	runner := ExecRunner{}
+
+	err := runner.Run("", "bash", "-lc", "printf 'stdout-message\\n'; printf 'stderr-message\\n' >&2; exit 1")
+	if err == nil {
+		t.Fatal("expected command failure")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "stderr-message") {
+		t.Fatalf("expected stderr output in error, got %q", message)
+	}
+}
+
 func shellQuoteForTest(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
