@@ -10,9 +10,6 @@ type RefreshThemeCachesStep struct{}
 // NewRefreshThemeCachesStep creates the pipeline step that rebuilds
 // theme-related cache layers after restore.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured RefreshThemeCachesStep instance
 func NewRefreshThemeCachesStep() *RefreshThemeCachesStep {
@@ -20,9 +17,6 @@ func NewRefreshThemeCachesStep() *RefreshThemeCachesStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

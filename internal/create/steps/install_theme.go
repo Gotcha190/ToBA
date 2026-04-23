@@ -10,9 +10,6 @@ type InstallThemeStep struct{}
 // NewInstallThemeStep creates the pipeline step that restores local theme
 // archives or clones the starter theme repository.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured InstallThemeStep instance
 func NewInstallThemeStep() *InstallThemeStep {
@@ -20,9 +17,6 @@ func NewInstallThemeStep() *InstallThemeStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

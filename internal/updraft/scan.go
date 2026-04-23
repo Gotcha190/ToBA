@@ -20,9 +20,6 @@ type Selection struct {
 // HasRecognizedFiles reports whether the selection contains at least one known
 // local backup artifact.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - true when any recognized backup category is populated
 func (s Selection) HasRecognizedFiles() bool {
@@ -31,9 +28,6 @@ func (s Selection) HasRecognizedFiles() bool {
 
 // ValidateLocalProjectSet checks that all required backup categories are
 // present in the selection.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - an error listing the missing categories when the local backup set is incomplete

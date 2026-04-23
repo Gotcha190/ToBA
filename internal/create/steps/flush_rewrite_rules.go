@@ -10,9 +10,6 @@ type FlushRewriteRulesStep struct{}
 // NewFlushRewriteRulesStep creates the pipeline step that refreshes WordPress
 // rewrite rules.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured FlushRewriteRulesStep instance
 func NewFlushRewriteRulesStep() *FlushRewriteRulesStep {
@@ -20,9 +17,6 @@ func NewFlushRewriteRulesStep() *FlushRewriteRulesStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

@@ -7,9 +7,6 @@ type ImportUploadsStep struct{}
 // NewImportUploadsStep creates the pipeline step that restores uploads
 // archives into wp-content.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ImportUploadsStep instance
 func NewImportUploadsStep() *ImportUploadsStep {
@@ -17,9 +14,6 @@ func NewImportUploadsStep() *ImportUploadsStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

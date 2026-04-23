@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gotcha190/toba/internal/create"
@@ -21,6 +23,7 @@ type recordedCommand struct {
 }
 
 type fakeRunner struct {
+	mu                  sync.Mutex
 	commands            []recordedCommand
 	runErr              error
 	runErrByCommand     map[string]error
@@ -31,11 +34,13 @@ type fakeRunner struct {
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
+	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	r.mu.Unlock()
 	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
 		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
 			return err
@@ -58,11 +63,13 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 }
 
 func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
+	r.mu.Lock()
 	r.commands = append(r.commands, recordedCommand{
 		dir:  dir,
 		cmd:  cmd,
 		args: append([]string(nil), args...),
 	})
+	r.mu.Unlock()
 	if r.captureErrByCommand != nil {
 		if err, ok := r.captureErrByCommand[cmd+" "+strings.Join(args, " ")]; ok {
 			return "", err
@@ -80,11 +87,13 @@ func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (stri
 		}
 		return r.homeURL + "\n", nil
 	}
-	if cmd == "lando" && len(args) == 4 && args[0] == "wp" && args[1] == "option" && args[2] == "get" {
-		switch args[3] {
-		case "stylesheet", "template":
+	if cmd == "lando" && len(args) == 3 && args[0] == "wp" && args[1] == "eval" {
+		if strings.Contains(args[2], "get_option('stylesheet') ?: get_option('template')") {
 			return "toet\n", nil
 		}
+	}
+	if cmd == "lando" && len(args) == 5 && args[0] == "wp" && args[1] == "user" && args[2] == "get" && args[3] == "tamago" && args[4] == "--field=ID" {
+		return "1\n", nil
 	}
 	return "", nil
 }
@@ -124,12 +133,12 @@ func TestRunCreateCreatesProjectSkeletonFromSSHStarter(t *testing.T) {
 	assertHasCommand(t, runner.commands, "ssh", []string{"-p", "22", "user@192.168.0.1", "dynamic:home"})
 	assertHasCommand(t, runner.commands, "scp", []string{"-P", "22", "dynamic:remote-sql", "dynamic:local-sql"})
 	assertHasCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
-	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install"})
-	assertHasCommand(t, runner.commands, "npm", []string{"i"})
+	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"})
+	assertHasCommand(t, runner.commands, "npm", []string{"ci", "--no-audit", "--no-fund"})
 	assertHasCommand(t, runner.commands, "npm", []string{"run", "build"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "demo"})
 	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 2)
-	assertNoCommand(t, runner.commands, "lando", []string{"wp", "option", "get", "stylesheet"})
+	assertNoCommand(t, runner.commands, "lando", []string{"wp", "eval", "echo get_option('stylesheet') ?: get_option('template');"})
 }
 
 func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
@@ -184,7 +193,7 @@ func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
 	assertNoCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
 	assertNoCommand(t, runner.commands, "lando", []string{"composer", "install"})
 	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 0)
-	assertHasCommand(t, runner.commands, "lando", []string{"wp", "option", "get", "stylesheet"})
+	assertHasCommand(t, runner.commands, "lando", []string{"wp", "eval", "echo get_option('stylesheet') ?: get_option('template');"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "toet"})
 }
 
@@ -613,6 +622,43 @@ func TestRunCreateFailsForProjectNameWithSpaces(t *testing.T) {
 	}
 }
 
+func TestBuildCreatePipelineOverlapsRemoteBootstrapWhenProjectDirDoesNotExist(t *testing.T) {
+	baseDir := t.TempDir()
+
+	pipeline := buildCreatePipeline(baseDir, create.ProjectConfig{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	})
+
+	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"collect-config"})
+	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir"})
+	assertNodeDependsOn(t, pipeline.Nodes, "import-plugins", []string{"project-dir", "prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
+	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data"})
+}
+
+func TestBuildCreatePipelineKeepsPrepareStarterDataAheadOfProjectDirForExistingProject(t *testing.T) {
+	baseDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(baseDir, "demo"), 0755); err != nil {
+		t.Fatalf("failed to prepare existing project dir: %v", err)
+	}
+
+	pipeline := buildCreatePipeline(baseDir, create.ProjectConfig{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	})
+
+	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir", "prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
+}
+
 func assertProjectSkeleton(t *testing.T, paths create.ProjectPaths) {
 	t.Helper()
 
@@ -728,10 +774,26 @@ func argsMatch(actual []string, expected []string) bool {
 	return true
 }
 
+func assertNodeDependsOn(t *testing.T, nodes []create.StepNode, id string, expected []string) {
+	t.Helper()
+
+	for _, node := range nodes {
+		if node.ID != id {
+			continue
+		}
+		if !reflect.DeepEqual(node.DependsOn, expected) {
+			t.Fatalf("unexpected dependencies for %s:\nexpected: %#v\ngot: %#v", id, expected, node.DependsOn)
+		}
+		return
+	}
+
+	t.Fatalf("expected node %s in %#v", id, nodes)
+}
+
 func matchesDynamicArg(actual string, pattern string) bool {
 	switch pattern {
 	case "home":
-		return strings.HasPrefix(actual, "cd '"+testRemoteWordPressRoot+"' && wp84 option get home")
+		return strings.Contains(actual, "wp84 option get home") && strings.Contains(actual, "'"+testRemoteWordPressRoot+"'")
 	case "remote-sql":
 		return strings.HasPrefix(actual, "user@192.168.0.1:"+testRemoteWordPressRoot+"/") && strings.HasSuffix(actual, ".sql")
 	case "local-sql":

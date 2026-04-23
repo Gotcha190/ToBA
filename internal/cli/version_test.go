@@ -6,6 +6,10 @@ import (
 	"testing"
 )
 
+func expectedDevVersion() string {
+	return baseVersion + " " + devSuffix
+}
+
 func TestResolvedVersionPrefersReleaseVersion(t *testing.T) {
 	originalReleaseVersion := releaseVersion
 	originalReadBuildInfo := readBuildInfo
@@ -52,7 +56,7 @@ func TestResolvedVersionFallsBackToBaseVersionDev(t *testing.T) {
 		readBuildInfo = originalReadBuildInfo
 	})
 
-	if got := resolvedVersion(); got != "1.0.0 dev" {
+	if got := resolvedVersion(); got != expectedDevVersion() {
 		t.Fatalf("expected dev fallback, got %q", got)
 	}
 }
@@ -75,7 +79,7 @@ func TestResolvedVersionTreatsLocalPseudoVersionAsDev(t *testing.T) {
 		readBuildInfo = originalReadBuildInfo
 	})
 
-	if got := resolvedVersion(); got != "1.0.0 dev" {
+	if got := resolvedVersion(); got != expectedDevVersion() {
 		t.Fatalf("expected local pseudo-version to fall back to dev, got %q", got)
 	}
 }
@@ -98,7 +102,7 @@ func TestResolvedVersionTreatsDirtyLocalPseudoVersionAsDev(t *testing.T) {
 		readBuildInfo = originalReadBuildInfo
 	})
 
-	if got := resolvedVersion(); got != "1.0.0 dev" {
+	if got := resolvedVersion(); got != expectedDevVersion() {
 		t.Fatalf("expected dirty local pseudo-version to fall back to dev, got %q", got)
 	}
 }
@@ -121,7 +125,7 @@ func TestResolvedVersionTreatsDirtyTaggedLocalBuildAsDev(t *testing.T) {
 		readBuildInfo = originalReadBuildInfo
 	})
 
-	if got := resolvedVersion(); got != "1.0.0 dev" {
+	if got := resolvedVersion(); got != expectedDevVersion() {
 		t.Fatalf("expected dirty tagged local build to fall back to dev, got %q", got)
 	}
 }
@@ -160,7 +164,7 @@ func TestRunVersionWritesResolvedVersion(t *testing.T) {
 	var output strings.Builder
 	runVersionWithWriter(&output)
 
-	if output.String() != "toba version: 1.0.0 dev\n" {
+	if output.String() != "toba version: "+expectedDevVersion()+"\n" {
 		t.Fatalf("unexpected version output: %q", output.String())
 	}
 }

@@ -4,16 +4,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gotcha190/toba/internal/create"
 )
 
+type buildCommand struct {
+	cmd  string
+	args []string
+}
+
 type MissingStarterRepoError struct{}
 
 // Error explains how to provide the missing starter repository setting.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the human-readable error string
@@ -69,21 +72,117 @@ func Install(runner create.CommandRunner, themesDir string, starterRepo string, 
 // - an error when any dependency installation or build command fails
 //
 // Side effects:
-// - runs `lando composer install`, `npm i`, and `npm run build`
+// - runs `lando composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress`
+// - runs `npm ci --no-audit --no-fund`, falling back to `npm install --no-audit --no-fund`
+// - runs `npm run build`
 func Build(runner create.CommandRunner, themeDir string) error {
-	if err := runner.Run(themeDir, "lando", "composer", "install"); err != nil {
-		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme composer install failed", err)
+	installErrors := make(chan error, 2)
+	var waitGroup sync.WaitGroup
+
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+
+		composerCommand := composerInstallCommand()
+		if err := runner.Run(themeDir, composerCommand.cmd, composerCommand.args...); err != nil {
+			installErrors <- wrapBuildError("lando", err)
+		}
+	}()
+
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+
+		npmCommand := npmInstallCommand()
+		if err := runner.Run(themeDir, npmCommand.cmd, npmCommand.args...); err == nil {
+			return
+		}
+
+		npmFallbackCommand := npmInstallFallbackCommand()
+		if fallbackErr := runner.Run(themeDir, npmFallbackCommand.cmd, npmFallbackCommand.args...); fallbackErr != nil {
+			installErrors <- wrapBuildError("npm", fallbackErr)
+		}
+	}()
+
+	waitGroup.Wait()
+	close(installErrors)
+
+	for err := range installErrors {
+		if err != nil {
+			return err
+		}
 	}
 
-	if err := runner.Run(themeDir, "npm", "i"); err != nil {
-		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme npm install failed", err)
-	}
-
-	if err := runner.Run(themeDir, "npm", "run", "build"); err != nil {
+	buildCommand := buildThemeCommand()
+	if err := runner.Run(themeDir, buildCommand.cmd, buildCommand.args...); err != nil {
 		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme build failed", err)
 	}
 
 	return nil
+}
+
+// composerInstallCommand returns the optimized Composer install command.
+//
+// Returns:
+// - the command definition used for PHP dependency installation
+func composerInstallCommand() buildCommand {
+	return buildCommand{
+		cmd:  "lando",
+		args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
+	}
+}
+
+// npmInstallCommand returns the preferred Node dependency install command.
+//
+// Returns:
+// - the command definition used for lockfile-based Node dependency installation
+func npmInstallCommand() buildCommand {
+	return buildCommand{
+		cmd:  "npm",
+		args: []string{"ci", "--no-audit", "--no-fund"},
+	}
+}
+
+// npmInstallFallbackCommand returns the fallback Node dependency install
+// command.
+//
+// Returns:
+// - the command definition used when npm ci fails
+func npmInstallFallbackCommand() buildCommand {
+	return buildCommand{
+		cmd:  "npm",
+		args: []string{"install", "--no-audit", "--no-fund"},
+	}
+}
+
+// buildThemeCommand returns the frontend production build command.
+//
+// Returns:
+// - the command definition used to build theme assets
+func buildThemeCommand() buildCommand {
+	return buildCommand{
+		cmd:  "npm",
+		args: []string{"run", "build"},
+	}
+}
+
+// wrapBuildError attaches the theme build error code to a command failure.
+//
+// Parameters:
+// - command: command family that failed
+// - err: underlying command execution error
+//
+// Returns:
+// - a coded theme build error
+func wrapBuildError(command string, err error) error {
+	switch command {
+	case "lando":
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme composer install failed", err)
+	case "npm":
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme npm install failed", err)
+	default:
+		return create.NewCodedError("THEME_BUILD_FAILED", "starter theme build failed", err)
+	}
 }
 
 // GenerateAcornKey runs the Acorn key generation command twice for the local

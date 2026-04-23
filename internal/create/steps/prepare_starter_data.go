@@ -18,9 +18,6 @@ type PrepareStarterDataStep struct{}
 // NewPrepareStarterDataStep creates the pipeline step that selects and
 // prepares the starter data source for the run.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured PrepareStarterDataStep instance
 func NewPrepareStarterDataStep() *PrepareStarterDataStep {
@@ -28,9 +25,6 @@ func NewPrepareStarterDataStep() *PrepareStarterDataStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging
@@ -51,6 +45,10 @@ func (s *PrepareStarterDataStep) Name() string {
 // - mutates ctx.StarterData and ctx.UseExistingProjectDir
 // - reads the filesystem to detect an existing project directory
 func (s *PrepareStarterDataStep) Run(ctx *create.Context) error {
+	if ctx.StarterData.Mode == starterDataModeRemote {
+		return prepareRemoteStarterData(ctx)
+	}
+
 	rootInfo, err := os.Stat(ctx.Paths.Root)
 	switch {
 	case err == nil && rootInfo.IsDir():

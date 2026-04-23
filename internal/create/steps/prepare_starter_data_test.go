@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gotcha190/toba/internal/create"
@@ -27,6 +28,7 @@ func (l *starterTestLogger) Warning(msg string) {
 }
 
 type starterTestRunner struct {
+	mu                      sync.Mutex
 	commands                []starterRecordedCommand
 	captureOutput           string
 	captureOutputByContains map[string]string
@@ -40,6 +42,9 @@ type starterTestRunner struct {
 }
 
 func (r *starterTestRunner) Run(dir string, cmd string, args ...string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.commands = append(r.commands, starterRecordedCommand{dir: dir, cmd: cmd, args: append([]string(nil), args...)})
 	if cmd == "scp" && len(args) >= 3 {
 		if err := writeStarterFixture(args[len(args)-2], args[len(args)-1]); err != nil {
@@ -61,6 +66,9 @@ func (r *starterTestRunner) Run(dir string, cmd string, args ...string) error {
 }
 
 func (r *starterTestRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.commands = append(r.commands, starterRecordedCommand{dir: dir, cmd: cmd, args: append([]string(nil), args...)})
 	commandLine := cmd + " " + strings.Join(args, " ")
 	if r.captureOutputByContains != nil {
@@ -99,12 +107,15 @@ func TestPrepareStarterDataUsesLocalProjectBackupsWhenComplete(t *testing.T) {
 	if !ctx.UseExistingProjectDir {
 		t.Fatal("expected existing project dir mode to be enabled")
 	}
+	if ctx.StarterData.TempDir != "" {
+		t.Fatalf("expected local mode not to allocate starter temp dir, got %q", ctx.StarterData.TempDir)
+	}
 	for _, path := range append([]string{ctx.StarterData.DatabasePath}, append(append(append(ctx.StarterData.PluginsPaths, ctx.StarterData.UploadsPaths...), ctx.StarterData.OthersPaths...), ctx.StarterData.ThemePaths...)...) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)
 		}
-		if strings.HasPrefix(path, ctx.Paths.Root) {
-			t.Fatalf("expected %s to be copied to a temp dir", path)
+		if !strings.HasPrefix(path, ctx.Paths.Root) {
+			t.Fatalf("expected %s to point to original local backup under %s", path, ctx.Paths.Root)
 		}
 	}
 }
@@ -175,6 +186,37 @@ func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testin
 	assertStarterCommandContains(t, runner.commands, "ssh", "zip -r -q ../")
 	assertStarterCommandContains(t, runner.commands, "ssh", "zip -r -q -0 ../")
 	assertStarterCommandContains(t, runner.commands, "ssh", "-i 'uploads/*'")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 option get home >")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 db export")
+	assertStarterCommandContains(t, runner.commands, "ssh", ">/dev/null")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_source=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_db=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_plugins=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "& pid_uploads=$!")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_source\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_db\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_plugins\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wait \"$pid_uploads\"")
+	assertStarterCommandContains(t, runner.commands, "ssh", "cat ")
+}
+
+func TestPrepareStarterDataParsesLastRemoteOutputLineAsSourceURL(t *testing.T) {
+	logger := &starterTestLogger{}
+	runner := &starterTestRunner{
+		captureOutput: "\x1b[32;1mSuccess:\x1b[0m Exported to 'starter.sql'.\nhttps://starter.example.test\n",
+	}
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
+	}, logger, runner)
+
+	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
+		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
+	}
+	if ctx.StarterData.SourceURL != "https://starter.example.test" {
+		t.Fatalf("unexpected source URL: %q", ctx.StarterData.SourceURL)
+	}
 }
 
 func TestPrepareStarterDataRejectsEmptyExistingProjectFolder(t *testing.T) {
@@ -285,7 +327,7 @@ func TestPrepareStarterDataReportsSSHCommandFailures(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected SSH connection error")
 	}
-	if !strings.Contains(err.Error(), `failed to verify remote WordPress root "www/example.com" on user@192.168.0.1:22`) {
+	if !strings.Contains(err.Error(), "failed to prepare remote starter files on user@192.168.0.1:22") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -312,9 +354,9 @@ func TestPrepareStarterDataRejectsMissingRemoteWordPressRootOnHost(t *testing.T)
 
 func TestPrepareStarterDataCleansRemoteArtifactsWhenRemoteZipFails(t *testing.T) {
 	runner := &starterTestRunner{
-		captureOutput:  "https://starter.example.test\n",
-		runErrContains: "zip -r -q ../",
-		runErr:         os.ErrInvalid,
+		captureErrContains: "zip -r -q ../",
+		captureErrOutput:   "zip failed",
+		captureErr:         os.ErrInvalid,
 	}
 	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
 		Name:                "demo",
@@ -325,6 +367,30 @@ func TestPrepareStarterDataCleansRemoteArtifactsWhenRemoteZipFails(t *testing.T)
 	err := NewPrepareStarterDataStep().Run(ctx)
 	if err == nil {
 		t.Fatal("expected zip failure")
+	}
+	if len(runner.commands) != 1 || runner.commands[0].cmd != "ssh" {
+		t.Fatalf("expected remote prep failure to stop before extra cleanup or downloads, got %#v", runner.commands)
+	}
+}
+
+func TestPrepareStarterDataCleansRemoteArtifactsWhenDownloadFails(t *testing.T) {
+	runner := &starterTestRunner{
+		captureOutput:  "https://starter.example.test\n",
+		runErrContains: "-uploads.zip",
+		runErr:         os.ErrClosed,
+	}
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
+	}, &starterTestLogger{}, runner)
+
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected download failure")
+	}
+	if !strings.Contains(err.Error(), "failed to download starter uploads over SSH") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	foundCleanup := false
@@ -338,7 +404,15 @@ func TestPrepareStarterDataCleansRemoteArtifactsWhenRemoteZipFails(t *testing.T)
 		}
 	}
 	if !foundCleanup {
-		t.Fatalf("expected cleanup command after remote zip failure, got %#v", runner.commands)
+		t.Fatalf("expected cleanup command after download failure, got %#v", runner.commands)
+	}
+
+	localUploads := findStarterLocalTarget(runner.commands, "-uploads.zip")
+	if localUploads == "" {
+		t.Fatalf("expected uploads scp target in %#v", runner.commands)
+	}
+	if _, statErr := os.Stat(localUploads); !os.IsNotExist(statErr) {
+		t.Fatalf("expected partial uploads file to be removed, stat error=%v", statErr)
 	}
 }
 
@@ -429,6 +503,19 @@ func containsString(values []string, target string) bool {
 	}
 
 	return false
+}
+
+func findStarterLocalTarget(commands []starterRecordedCommand, remoteSuffix string) string {
+	for _, command := range commands {
+		if command.cmd != "scp" || len(command.args) < 3 {
+			continue
+		}
+		if strings.Contains(command.args[len(command.args)-2], remoteSuffix) {
+			return command.args[len(command.args)-1]
+		}
+	}
+
+	return ""
 }
 
 type starterRecordedCommand struct {

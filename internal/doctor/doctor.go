@@ -18,9 +18,6 @@ type Result struct {
 // FullWorkflowChecks returns the external binaries required by the complete
 // ToBA create workflow.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - the ordered list of dependency checks used by `toba doctor`
 func FullWorkflowChecks() []Check {

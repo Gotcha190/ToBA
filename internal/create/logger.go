@@ -26,7 +26,7 @@ type ConsoleLogger struct {
 // - msg: step label to display
 //
 // Returns:
-// - nothing
+// - null
 //
 // Side effects:
 // - writes a single formatted line to the logger output
@@ -40,7 +40,7 @@ func (l ConsoleLogger) Step(msg string) {
 // - msg: informational message to display
 //
 // Returns:
-// - nothing
+// - null
 func (l ConsoleLogger) Info(msg string) {
 	l.println("[INFO]", msg)
 }
@@ -51,7 +51,7 @@ func (l ConsoleLogger) Info(msg string) {
 // - msg: prompt text to display
 //
 // Returns:
-// - nothing
+// - null
 func (l ConsoleLogger) Prompt(msg string) {
 	fmt.Fprint(l.writer(), "[PROMPT] ", msg)
 }
@@ -62,7 +62,7 @@ func (l ConsoleLogger) Prompt(msg string) {
 // - msg: success message to display
 //
 // Returns:
-// - nothing
+// - null
 func (l ConsoleLogger) Success(msg string) {
 	l.println("[OK]", msg)
 }
@@ -73,7 +73,7 @@ func (l ConsoleLogger) Success(msg string) {
 // - msg: warning message to display
 //
 // Returns:
-// - nothing
+// - null
 func (l ConsoleLogger) Warning(msg string) {
 	l.println("[WARNING]", msg)
 }
@@ -84,7 +84,7 @@ func (l ConsoleLogger) Warning(msg string) {
 // - msg: error message to display
 //
 // Returns:
-// - nothing
+// - null
 func (l ConsoleLogger) Error(msg string) {
 	l.println("[ERROR]", msg)
 }
@@ -96,7 +96,7 @@ func (l ConsoleLogger) Error(msg string) {
 // - msg: human-readable error message
 //
 // Returns:
-// - nothing
+// - null
 func (l ConsoleLogger) ErrorCode(code string, msg string) {
 	l.println(fmt.Sprintf("[ERROR][%s]", code), msg)
 }
@@ -119,15 +119,12 @@ func NewConsoleLogger(out io.Writer) Logger {
 // - msg: message body to print
 //
 // Returns:
-// - nothing
+// - null
 func (l ConsoleLogger) println(prefix string, msg string) {
 	fmt.Fprintln(l.writer(), prefix, msg)
 }
 
 // writer returns the configured output writer or stdout when none is set.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the configured writer, or os.Stdout as a fallback

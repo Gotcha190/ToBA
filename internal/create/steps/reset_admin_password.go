@@ -8,9 +8,6 @@ type ResetAdminPasswordStep struct{}
 // NewResetAdminPasswordStep creates the pipeline step that restores the
 // default local admin password.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ResetAdminPasswordStep instance
 func NewResetAdminPasswordStep() *ResetAdminPasswordStep {
@@ -18,9 +15,6 @@ func NewResetAdminPasswordStep() *ResetAdminPasswordStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging
@@ -38,13 +32,11 @@ func (s *ResetAdminPasswordStep) Name() string {
 // - an error when the password reset or fallback user creation fails
 //
 // Side effects:
-// - runs `lando wp user get tamago --field=ID` and resets that account password
-// - may create the `tamago` administrator account when it does not exist
+//   - runs a single `lando wp eval ...` script that resets or creates the local
+//     admin account
 func (s *ResetAdminPasswordStep) Run(ctx *create.Context) error {
 	if ctx.DryRun {
-		ctx.Logger.Info("Would run: lando wp user get tamago --field=ID")
-		ctx.Logger.Info("Would run: lando wp user update tamago --user_pass=tamago")
-		ctx.Logger.Info("Would run when missing: lando wp user create tamago email@email.pl --role=administrator --user_pass=tamago --display_name=tamago")
+		ctx.Logger.Info("Would run: lando wp eval <reset-or-create tamago admin user script>")
 		return nil
 	}
 

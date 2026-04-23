@@ -33,9 +33,6 @@ func NewCodedError(code string, msg string, err error) error {
 // Error formats the coded message together with the wrapped error, when one is
 // present.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - the formatted error string
 func (e CodedError) Error() string {
@@ -50,9 +47,6 @@ func (e CodedError) Error() string {
 
 // Unwrap returns the wrapped error for errors.Is and errors.As support.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - the wrapped error, or nil when no underlying error is present
 func (e CodedError) Unwrap() error {
@@ -60,9 +54,6 @@ func (e CodedError) Unwrap() error {
 }
 
 // Code exposes the machine-readable error code associated with the failure.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the coded error identifier used by the pipeline logger

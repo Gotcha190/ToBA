@@ -14,16 +14,16 @@
 
 ## ToBA
 
-ToBA to narzędzie CLI napisane w Go, które automatyzuje przygotowanie lokalnego projektu WordPress z użyciem Lando, WP-CLI oraz danych startowych pobieranych z lokalnego backupu lub przez SSH.
+ToBA to narzędzie CLI napisane w Go, które automatyzuje przygotowanie lokalnego projektu WordPress z użyciem Lando, WP-CLI oraz danych startowych pobieranych z lokalnego backupu Updraft albo przez SSH.
 
 ## Co robi ToBA
 
-Wpisanie `toba` pokazuje dostępne komendy 
+Wpisanie `toba` pokazuje dostępne komendy.
 
 ToBA udostępnia cztery komendy:
 
 - `toba config` tworzy lub odświeża globalny plik konfiguracyjny w `~/.config/toba/.env`.
-- `toba create` tworzy lokalny projekt WordPress, przywraca dane startowe i finalizuje środowisko.
+- `toba create` tworzy lokalny projekt WordPress, przywraca dane startowe i finalizuje środowisko w zoptymalizowanym pipeline.
 - `toba doctor` sprawdza, czy wszystkie wymagane narzędzia są dostępne w systemie.
 - `toba version` wypisuje aktualny numer wersji CLI.
 
@@ -32,11 +32,12 @@ Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
 - `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
 
+Od wersji `1.2.0` przepływ `create` wykonuje niezależne kroki równolegle tam, gdzie jest to bezpieczne. Dotyczy to między innymi przygotowania danych przez SSH, pobierania zdalnych artefaktów, przywracania wielu archiwów oraz instalacji zależności theme.
+
 ## Wymagania
 
-Do pełnego działania potrzebne są:
+Do pełnego działania potrzebne są lokalnie:
 
-- #### dodany klucz ssh do serwera 
 - `git`
 - `node`
 - `npm`
@@ -46,6 +47,10 @@ Do pełnego działania potrzebne są:
 - `scp`
 - `zip`
 - `Go 1.26.1+` do budowania z aktualnego repozytorium
+
+W trybie SSH wymagany jest działający klucz SSH do serwera oraz dostęp do zdalnego katalogu WordPressa. Na zdalnym hoście ToBA używa `wp84` i `zip` do przygotowania paczek starter data.
+
+Opcjonalnie ToBA użyje systemowego `unzip`, jeśli jest dostępny, żeby przyspieszyć rozpakowywanie dużych archiwów. Jeśli `unzip` nie jest dostępny, używany jest bezpieczny wbudowany extractor Go.
 
 ## Instalacja
 
@@ -77,8 +82,8 @@ go install .
 
 Wersjonowanie binarki:
 
-- release build pokazuje `toba version: 1.0.0`
-- lokalny build z checkoutu repo pokazuje `toba version: 1.0.0 dev`
+- release build pokazuje `toba version: <version>` ustawione podczas wydania
+- lokalny build z checkoutu repo pokazuje `toba version: 1.2.0 dev`
 
 ## Szybki start
 
@@ -147,6 +152,8 @@ user@host -p port
 www/example.com
 ```
 
+`TOBA_STARTER_REPO` jest wymagane w trybie SSH, bo SSH mode nie pobiera theme z serwera. Theme jest wtedy klonowany z repozytorium startera.
+
 ## Komendy
 
 ```bash
@@ -165,13 +172,22 @@ toba version
 3. tworzy albo przygotowuje katalog projektu,
 4. generuje `.lando.yml`, `config/php.ini` i `wp-cli.yml`,
 5. uruchamia `lando start`,
-6. instaluje WordPress,
-7. instaluje lub przywraca theme,
-8. przywraca plugins, uploads, opcjonalne others i database,
-9. wykonuje `search-replace` na lokalną domenę,
-10. resetuje hasło administratora,
-11. aktywuje theme,
-12. czyści cache i odświeża rewrite rules.
+6. instaluje WordPress i tworzy `wp-config.php`,
+7. instaluje albo przywraca theme,
+8. buduje starter theme,
+9. przywraca plugins, uploads, database opcjonalne others,
+10. wykrywa prefix tabel i w razie potrzeby aktualizuje `wp-config.php`,
+11. wykonuje `search-replace` na lokalną domenę,
+12. resetuje albo tworzy lokalnego administratora `tamago`,
+13. aktywuje theme,
+14. czyści cache i odświeża rewrite rules.
+
+Pipeline jest grafem zależności, więc niezależne kroki nie muszą czekać na zakończenie całej poprzedniej warstwy. Przykłady:
+
+- w SSH mode przygotowanie danych zdalnych może nakładać się na tworzenie lokalnego projektu,
+- import `plugins`, `uploads`, `others` i instalacja WordPressa mogą wykonywać się niezależnie po spełnieniu swoich zależności,
+- theme build może wystartować po dostępności Lando, theme i plugins,
+- końcowe kroki cache/rewrite uruchamiają się dopiero po wymaganych importach i aktywacji theme.
 
 ## Tryby danych startowych
 
@@ -187,6 +203,10 @@ Jeśli istnieje folder `./<project-name>`, ToBA skanuje go w poszukiwaniu rozpoz
 
 Jeśli folder istnieje, ale jest pusty albo niekompletny, `toba create` zakończy się błędem.
 
+Opcjonalnie obsługiwany jest plik `config.php` który dopinany jest do `wp-config.php` za pomocą `require_once dirname( __DIR__ ) . '/config.php';`
+
+Wiele archiwów z tej samej kategorii jest rozpakowywanych równolegle, jeśli ich docelowe pliki się nie nakładają. ToBA odrzuca symlinki i próby wyjścia poza katalog docelowy podczas rozpakowywania.
+
 ### SSH mode
 
 Jeśli `./<project-name>` nie istnieje, ToBA używa `TOBA_SSH_TARGET` albo flagi `--ssh-target` oraz `TOBA_REMOTE_WORDPRESS_ROOT` albo flagi `--remote-wordpress-root`, a następnie pobiera starter data z hosta zdalnego.
@@ -195,6 +215,11 @@ Zasady:
 
 - SSH nie pobiera `themes`,
 - SSH nie pobiera `others`,
+- na zdalnym hoście tworzony jest dump bazy oraz archiwa `plugins` i `uploads`,
+- przygotowanie zdalnych artefaktów odbywa się jednym skryptem SSH, a dump, plugins, uploads i odczyt URL strony wykonują się równolegle,
+- pobieranie bazy, plugins i uploads przez `scp` również odbywa się równolegle,
+- zdalne pliki tymczasowe są usuwane po pobraniu albo przy błędzie przygotowania,
+- lokalne pliki starter data trafiają do tymczasowego katalogu `toba-starter-*`, który jest usuwany po zakończeniu `toba create`.
 
 ## Przykłady
 
@@ -222,16 +247,15 @@ Suchy przebieg bez zapisu plików:
 toba create demo --dry-run --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
 ```
 
-
 ## Tworzone lokalne konto administratora wp-admin
 
 Login: `tamago`
 
 Hasło: `tamago`
 
-Email: `email@email.pl`
+E-mail: `email@email.pl`
 
-Jest to konto lokalne, nie ma potrzeb bezpieczeństwa
+Jest to konto lokalne przeznaczone do środowiska developerskiego.
 
 ## Licencja
 

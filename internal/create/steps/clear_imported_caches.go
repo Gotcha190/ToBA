@@ -12,9 +12,6 @@ type ClearImportedCachesStep struct{}
 // NewClearImportedCachesStep creates the pipeline step that removes imported
 // caches and flushes the WordPress object cache.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ClearImportedCachesStep instance
 func NewClearImportedCachesStep() *ClearImportedCachesStep {
@@ -22,9 +19,6 @@ func NewClearImportedCachesStep() *ClearImportedCachesStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

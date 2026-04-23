@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // ExtractZip expands a zip archive held in memory into destDir.
@@ -63,6 +66,294 @@ func ExtractZipFile(sourcePath string, destDir string) error {
 	return extractZip(reader, destDir)
 }
 
+// ExtractZipFiles expands multiple zip archives into destDir. Archives are
+// extracted in parallel only when their target files do not overlap.
+//
+// Parameters:
+// - sourcePaths: zip archive paths on disk
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - an error when any archive cannot be opened or extracted safely
+//
+// Side effects:
+// - reads multiple archives from disk
+// - writes extracted files and directories to destDir
+func ExtractZipFiles(sourcePaths []string, destDir string) error {
+	plans := make([]zipExtractionPlan, 0, len(sourcePaths))
+	for _, sourcePath := range sourcePaths {
+		if sourcePath == "" {
+			continue
+		}
+
+		reader, err := zip.OpenReader(sourcePath)
+		if err != nil {
+			return err
+		}
+
+		plan, err := newZipExtractionPlan(sourcePath, &reader.Reader, destDir)
+		closeErr := reader.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+
+		plans = append(plans, plan)
+	}
+
+	if len(plans) == 0 {
+		return nil
+	}
+
+	if !zipPlansAreIndependent(plans) {
+		for _, plan := range plans {
+			if err := plan.extract(destDir); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return extractZipPlansInParallel(plans, destDir)
+}
+
+type zipEntryPlan struct {
+	entryName  string
+	targetPath string
+	mode       os.FileMode
+	isDir      bool
+}
+
+type zipExtractionPlan struct {
+	sourcePath   string
+	entries      []zipEntryPlan
+	targets      map[string]struct{}
+	fileNames    []string
+	canRunDirect bool
+}
+
+// newZipExtractionPlan validates archive entries and prepares extraction
+// metadata for one zip file.
+//
+// Parameters:
+// - sourcePath: zip archive path used in error messages and direct extraction
+// - reader: parsed zip archive reader
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - the prepared extraction plan
+// - an error when any archive entry is unsafe
+func newZipExtractionPlan(sourcePath string, reader *zip.Reader, destDir string) (zipExtractionPlan, error) {
+	entries, err := buildZipEntryPlans(reader, destDir)
+	if err != nil {
+		return zipExtractionPlan{}, fmt.Errorf("inspect %s: %w", sourcePath, err)
+	}
+
+	targets := make(map[string]struct{}, len(entries))
+	fileNames := make([]string, 0, len(entries))
+	canRunDirect := true
+	for _, entry := range entries {
+		if entry.isDir {
+			continue
+		}
+
+		fileNames = append(fileNames, entry.entryName)
+		normalizedTarget := filepath.Clean(entry.targetPath)
+		if _, exists := targets[normalizedTarget]; exists {
+			canRunDirect = false
+		}
+		targets[normalizedTarget] = struct{}{}
+	}
+
+	return zipExtractionPlan{
+		sourcePath:   sourcePath,
+		entries:      entries,
+		targets:      targets,
+		fileNames:    fileNames,
+		canRunDirect: canRunDirect,
+	}, nil
+}
+
+// extract runs this zip extraction plan.
+//
+// Parameters:
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - an error when extraction fails
+//
+// Side effects:
+// - writes extracted directories and files under destDir
+func (p zipExtractionPlan) extract(destDir string) error {
+	if p.canRunDirect && canUseSystemUnzip() {
+		if err := extractZipWithSystemUnzip(p.sourcePath, destDir, p.entries, p.fileNames); err != nil {
+			return fmt.Errorf("extract %s: %w", p.sourcePath, err)
+		}
+		return nil
+	}
+
+	reader, err := zip.OpenReader(p.sourcePath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", p.sourcePath, err)
+	}
+	defer reader.Close()
+
+	if err := extractZipEntries(&reader.Reader, p.entries); err != nil {
+		return fmt.Errorf("extract %s: %w", p.sourcePath, err)
+	}
+
+	return nil
+}
+
+// zipPlansAreIndependent reports whether extraction plans write disjoint
+// target files.
+//
+// Parameters:
+// - plans: prepared zip extraction plans to compare
+//
+// Returns:
+// - true when no two plans write the same file target
+func zipPlansAreIndependent(plans []zipExtractionPlan) bool {
+	seen := make(map[string]struct{})
+	for _, plan := range plans {
+		for target := range plan.targets {
+			if _, exists := seen[target]; exists {
+				return false
+			}
+			seen[target] = struct{}{}
+		}
+	}
+
+	return true
+}
+
+// extractZipPlansInParallel extracts independent zip plans using worker
+// goroutines.
+//
+// Parameters:
+// - plans: prepared zip extraction plans
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - an error when any plan extraction fails
+//
+// Side effects:
+// - writes extracted directories and files under destDir
+func extractZipPlansInParallel(plans []zipExtractionPlan, destDir string) error {
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(plans) {
+		workers = len(plans)
+	}
+
+	work := make(chan zipExtractionPlan)
+	errs := make(chan error, len(plans))
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for plan := range work {
+				if err := plan.extract(destDir); err != nil {
+					errs <- err
+				}
+			}
+		}()
+	}
+
+	for _, plan := range plans {
+		work <- plan
+	}
+	close(work)
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// canUseSystemUnzip reports whether the system unzip binary is available.
+//
+// Returns:
+// - true when unzip can be found on PATH
+func canUseSystemUnzip() bool {
+	_, err := exec.LookPath("unzip")
+	return err == nil
+}
+
+const unzipBatchSize = 256
+
+// extractZipWithSystemUnzip extracts selected files with the system unzip
+// binary after creating required directories.
+//
+// Parameters:
+// - sourcePath: zip archive path on disk
+// - destDir: destination directory for extracted files
+// - entries: validated archive entries
+// - fileNames: file entry names to pass to unzip
+//
+// Returns:
+// - an error when directory creation or unzip execution fails
+//
+// Side effects:
+// - creates directories under destDir
+// - executes the system unzip binary
+func extractZipWithSystemUnzip(sourcePath string, destDir string, entries []zipEntryPlan, fileNames []string) error {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.isDir {
+			if err := os.MkdirAll(entry.targetPath, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(entry.targetPath), 0755); err != nil {
+			return err
+		}
+	}
+
+	if len(fileNames) == 0 {
+		return nil
+	}
+
+	for i := 0; i < len(fileNames); i += unzipBatchSize {
+		end := i + unzipBatchSize
+		if end > len(fileNames) {
+			end = len(fileNames)
+		}
+
+		args := make([]string, 0, 5+(end-i))
+		args = append(args, "-qq", "-o", sourcePath)
+		args = append(args, fileNames[i:end]...)
+		args = append(args, "-d", destDir)
+
+		cmd := exec.Command("unzip", args...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			message := strings.TrimSpace(string(output))
+			if message == "" {
+				return err
+			}
+			return fmt.Errorf("%w: %s", err, message)
+		}
+	}
+
+	return nil
+}
+
 // extractZip writes each safe entry from reader into destDir while rejecting
 // symlinks and path traversal attempts.
 //
@@ -76,31 +367,35 @@ func ExtractZipFile(sourcePath string, destDir string) error {
 // Side effects:
 // - creates directories and files under destDir
 func extractZip(reader *zip.Reader, destDir string) error {
+	entries, err := buildZipEntryPlans(reader, destDir)
+	if err != nil {
+		return err
+	}
+
+	return extractZipEntries(reader, entries)
+}
+
+// buildZipEntryPlans validates archive entries and resolves their destination
+// paths.
+//
+// Parameters:
+// - reader: parsed zip archive reader
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - validated entry plans
+// - an error when an entry is unsafe
+func buildZipEntryPlans(reader *zip.Reader, destDir string) ([]zipEntryPlan, error) {
+	entries := make([]zipEntryPlan, 0, len(reader.File))
 	for _, file := range reader.File {
 		targetPath, err := secureJoin(destDir, file.Name)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		mode := file.Mode()
 		if mode&os.ModeSymlink != 0 {
-			return fmt.Errorf("archive entry is a symlink: %s", file.Name)
-		}
-
-		if file.FileInfo().IsDir() {
-			if err := os.MkdirAll(targetPath, 0755); err != nil {
-				return err
-			}
-			continue
-		}
-
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-			return err
-		}
-
-		input, err := file.Open()
-		if err != nil {
-			return err
+			return nil, fmt.Errorf("archive entry is a symlink: %s", file.Name)
 		}
 
 		fileMode := mode.Perm()
@@ -108,7 +403,57 @@ func extractZip(reader *zip.Reader, destDir string) error {
 			fileMode = 0644
 		}
 
-		output, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
+		entries = append(entries, zipEntryPlan{
+			entryName:  file.Name,
+			targetPath: targetPath,
+			mode:       fileMode,
+			isDir:      file.FileInfo().IsDir(),
+		})
+	}
+
+	return entries, nil
+}
+
+// extractZipEntries writes validated zip entries to disk.
+//
+// Parameters:
+// - reader: parsed zip archive reader
+// - entries: validated archive entries to extract
+//
+// Returns:
+// - an error when any entry cannot be read or written
+//
+// Side effects:
+// - creates directories and files for extracted entries
+func extractZipEntries(reader *zip.Reader, entries []zipEntryPlan) error {
+	zipFiles := make(map[string]*zip.File, len(reader.File))
+	for _, file := range reader.File {
+		zipFiles[file.Name] = file
+	}
+
+	for _, entry := range entries {
+		if entry.isDir {
+			if err := os.MkdirAll(entry.targetPath, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(entry.targetPath), 0755); err != nil {
+			return err
+		}
+
+		file := zipFiles[entry.entryName]
+		if file == nil {
+			return fmt.Errorf("archive entry disappeared during extraction: %s", entry.entryName)
+		}
+
+		input, err := file.Open()
+		if err != nil {
+			return err
+		}
+
+		output, err := os.OpenFile(entry.targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, entry.mode)
 		if err != nil {
 			input.Close()
 			return err

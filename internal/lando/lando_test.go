@@ -42,3 +42,47 @@ func TestRenderConfig(t *testing.T) {
 		}
 	}
 }
+
+type landoTestRunner struct {
+	runCalls     []string
+	captureCalls []string
+	captureErr   error
+}
+
+func (r *landoTestRunner) Run(dir string, cmd string, args ...string) error {
+	r.runCalls = append(r.runCalls, dir+"|"+cmd+" "+strings.Join(args, " "))
+	return nil
+}
+
+func (r *landoTestRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
+	r.captureCalls = append(r.captureCalls, dir+"|"+cmd+" "+strings.Join(args, " "))
+	return "", r.captureErr
+}
+
+func TestStartUsesCaptureOutputForQuietSuccess(t *testing.T) {
+	runner := &landoTestRunner{}
+
+	if err := Start(runner, "/tmp/demo"); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	if len(runner.runCalls) != 0 {
+		t.Fatalf("expected no Run calls, got %#v", runner.runCalls)
+	}
+	if len(runner.captureCalls) != 1 || runner.captureCalls[0] != "/tmp/demo|lando start" {
+		t.Fatalf("unexpected CaptureOutput calls: %#v", runner.captureCalls)
+	}
+}
+
+func TestStartWrapsCaptureOutputError(t *testing.T) {
+	expectedErr := create.NewCodedError("INNER", "inner", nil)
+	runner := &landoTestRunner{captureErr: expectedErr}
+
+	err := Start(runner, "/tmp/demo")
+	if err == nil {
+		t.Fatal("expected Start to fail")
+	}
+	if !strings.Contains(err.Error(), "lando start failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

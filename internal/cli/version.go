@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const baseVersion = "1.0.0"
+const baseVersion = "1.2.0"
 const devSuffix = "dev"
 
 var releaseVersion string
@@ -19,11 +19,8 @@ var taggedVersionPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+(?:\+dirty)?$`)
 
 // RunVersion prints the current CLI version string.
 //
-// Parameters:
-// - none
-//
 // Returns:
-// - nothing
+// - null
 //
 // Side effects:
 // - writes the version string to stdout
@@ -35,10 +32,25 @@ func RunVersion() {
 	runVersionWithWriter(os.Stdout)
 }
 
+// runVersionWithWriter writes the resolved CLI version to output.
+//
+// Parameters:
+// - output: destination writer for the version line
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - writes the version followed by a newline
 func runVersionWithWriter(output io.Writer) {
 	fmt.Fprintf(output, "toba version: %s\n", resolvedVersion())
 }
 
+// resolvedVersion picks the best available version string for the current
+// binary.
+//
+// Returns:
+// - the release version, build-info version, or base development version
 func resolvedVersion() string {
 	if version := normalizeVersion(releaseVersion); version != "" {
 		return version
@@ -53,6 +65,14 @@ func resolvedVersion() string {
 	return baseVersion + " " + devSuffix
 }
 
+// normalizeVersion strips supported version prefixes and ignores empty
+// development placeholders.
+//
+// Parameters:
+// - raw: version string reported by release metadata or build info
+//
+// Returns:
+// - the normalized version string, or an empty string when raw has no usable version
 func normalizeVersion(raw string) string {
 	version := strings.TrimSpace(raw)
 	switch version {
@@ -70,6 +90,14 @@ func normalizeVersion(raw string) string {
 	return version
 }
 
+// shouldTreatBuildInfoVersionAsDev reports whether build info describes a
+// local development binary.
+//
+// Parameters:
+// - info: build metadata returned by debug.ReadBuildInfo
+//
+// Returns:
+// - true when the binary should display the development version label
 func shouldTreatBuildInfoVersionAsDev(info *debug.BuildInfo) bool {
 	version := strings.TrimSpace(info.Main.Version)
 	if !hasVCSMarker(info) {
@@ -83,6 +111,13 @@ func shouldTreatBuildInfoVersionAsDev(info *debug.BuildInfo) bool {
 	return taggedVersionPattern.MatchString(version)
 }
 
+// hasVCSMarker reports whether build info contains VCS metadata.
+//
+// Parameters:
+// - info: build metadata returned by debug.ReadBuildInfo
+//
+// Returns:
+// - true when a VCS marker is present
 func hasVCSMarker(info *debug.BuildInfo) bool {
 	for _, setting := range info.Settings {
 		if setting.Key == "vcs" && setting.Value != "" {
