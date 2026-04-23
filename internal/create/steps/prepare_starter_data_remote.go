@@ -189,34 +189,6 @@ func remoteStarterPreparationScript(remoteWordPressRoot string, remoteDatabase s
 	}, "; ")
 }
 
-func ensureRemoteWordPressRootExists(ctx *create.Context, target sshTarget, remoteWordPressRoot string) error {
-	const missingMarker = "__TOBA_REMOTE_ROOT_MISSING__"
-
-	script := "if [ -d " + shellQuote(remoteWordPressRoot) + " ]; then exit 0; fi; " +
-		"printf '%s\\n' " + shellQuote(missingMarker) + "; exit 42"
-
-	output, err := ctx.Runner.CaptureOutput("", "ssh", "-p", target.Port, target.UserHost, script)
-	if err == nil {
-		return nil
-	}
-
-	if strings.Contains(output, missingMarker) {
-		return fmt.Errorf(
-			"remote WordPress root %q does not exist on %s:%s; update TOBA_REMOTE_WORDPRESS_ROOT in the global config or pass --remote-wordpress-root",
-			remoteWordPressRoot,
-			target.UserHost,
-			target.Port,
-		)
-	}
-
-	detail := strings.TrimSpace(output)
-	if detail == "" {
-		return fmt.Errorf("failed to verify remote WordPress root %q on %s:%s: %w", remoteWordPressRoot, target.UserHost, target.Port, err)
-	}
-
-	return fmt.Errorf("failed to verify remote WordPress root %q on %s:%s: %w\n%s", remoteWordPressRoot, target.UserHost, target.Port, err, detail)
-}
-
 // normalizeSourceURL validates the captured remote site URL and returns a
 // normalized string form.
 //

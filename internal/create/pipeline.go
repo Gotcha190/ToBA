@@ -91,7 +91,6 @@ func (p *Pipeline) runDependencyGraph(ctx *Context) error {
 		index      int
 		remaining  int
 		dependents []string
-		completed  bool
 	}
 
 	type nodeResult struct {
@@ -185,7 +184,6 @@ func (p *Pipeline) runDependencyGraph(ctx *Context) error {
 		completed++
 
 		state := states[result.id]
-		state.completed = true
 
 		p.recordTiming(result.timing)
 		if result.err != nil {

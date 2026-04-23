@@ -165,15 +165,6 @@ func newZipExtractionPlan(sourcePath string, reader *zip.Reader, destDir string)
 	}, nil
 }
 
-func extractZipPath(sourcePath string, reader *zip.Reader, destDir string) error {
-	plan, err := newZipExtractionPlan(sourcePath, reader, destDir)
-	if err != nil {
-		return err
-	}
-
-	return plan.extract(destDir)
-}
-
 func (p zipExtractionPlan) extract(destDir string) error {
 	if p.canRunDirect && canUseSystemUnzip() {
 		if err := extractZipWithSystemUnzip(p.sourcePath, destDir, p.entries, p.fileNames); err != nil {

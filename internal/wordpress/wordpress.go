@@ -458,9 +458,7 @@ func forEachLine(reader io.Reader, fn func(line string) error) error {
 // - an error when user lookup, creation, or password reset fails
 //
 // Side effects:
-// - runs `lando wp user get tamago --field=ID`
-// - may run `lando wp user create tamago ... --role=administrator --user_pass=...`
-// - may run `lando wp user update tamago --user_pass=...`
+// - runs `lando wp eval ...` to create or update the default admin account
 func ResetAdminPassword(runner create.CommandRunner, projectDir string) error {
 	script := "" +
 		"$user = get_user_by('login', " + phpSingleQuote(defaultAdminUser) + ");" +
@@ -519,7 +517,7 @@ func ActivateTheme(runner create.CommandRunner, projectDir string, themeName str
 // - an error when both option lookups fail or return empty values
 //
 // Side effects:
-// - runs `lando wp option get stylesheet` and, if needed, `template`
+// - runs `lando wp eval ...` to read the stylesheet or template option
 func DetectImportedThemeSlug(runner create.CommandRunner, projectDir string) (string, error) {
 	value, err := runner.CaptureOutput(
 		projectDir,
@@ -569,7 +567,7 @@ func FlushRewriteRules(runner create.CommandRunner, projectDir string) error {
 // - an error when any cache maintenance command fails
 //
 // Side effects:
-// - runs several `lando wp acorn ...` commands in sequence
+// - runs supported `wp acorn ...` commands in one Lando appserver shell
 func RefreshThemeCaches(runner create.CommandRunner, projectDir string) error {
 	acornList, err := runner.CaptureOutput(projectDir, "lando", "wp", "acorn", "list")
 	if err != nil {
