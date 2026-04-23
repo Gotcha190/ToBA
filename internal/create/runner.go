@@ -15,8 +15,7 @@ type CommandRunner interface {
 
 type ExecRunner struct{}
 
-// Run executes a shell command inside dir while streaming stdout and stderr to
-// the current process.
+// Run executes a non-interactive command inside dir.
 //
 // Parameters:
 // - dir: working directory in which the command should run
@@ -28,14 +27,13 @@ type ExecRunner struct{}
 //
 // Side effects:
 // - launches a child process
-// - writes command output to the current process streams
+// - captures stdout and stderr for error reporting
 func (r ExecRunner) Run(dir string, cmd string, args ...string) error {
 	command := execCommand(dir, cmd, args...)
 	command.Env = withWorkingDirEnv(dir)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	command.Stdin = os.Stdin
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 
