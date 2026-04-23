@@ -140,6 +140,14 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	return nil
 }
 
+// buildCreatePipeline constructs the create workflow dependency graph.
+//
+// Parameters:
+// - baseDir: directory in which the project will be created
+// - config: project configuration used to decide safe parallelization
+//
+// Returns:
+// - the configured create pipeline
 func buildCreatePipeline(baseDir string, config create.ProjectConfig) create.Pipeline {
 	remoteBootstrapParallel := canParallelizeRemoteBootstrap(baseDir, config)
 
@@ -182,6 +190,15 @@ func buildCreatePipeline(baseDir string, config create.ProjectConfig) create.Pip
 	}
 }
 
+// canParallelizeRemoteBootstrap reports whether remote starter preparation can
+// overlap with local project directory creation.
+//
+// Parameters:
+// - baseDir: directory in which the project will be created
+// - config: project configuration to inspect
+//
+// Returns:
+// - true when remote starter data can be prepared in parallel with project setup
 func canParallelizeRemoteBootstrap(baseDir string, config create.ProjectConfig) bool {
 	normalized := config
 	if err := normalized.Normalize(); err != nil {
@@ -205,10 +222,24 @@ type forcedRemotePrepareStarterDataStep struct {
 	base create.Step
 }
 
+// Name returns the wrapped prepare starter data step name.
+//
+// Returns:
+// - the step name
 func (s forcedRemotePrepareStarterDataStep) Name() string {
 	return s.base.Name()
 }
 
+// Run forces remote starter data mode before running the wrapped step.
+//
+// Parameters:
+// - ctx: shared create workflow context
+//
+// Returns:
+// - an error when the wrapped step fails
+//
+// Side effects:
+// - updates ctx.StarterData.Mode before delegating execution
 func (s forcedRemotePrepareStarterDataStep) Run(ctx *create.Context) error {
 	ctx.StarterData.Mode = "remote"
 	return s.base.Run(ctx)

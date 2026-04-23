@@ -7,9 +7,6 @@ type ImportPluginsStep struct{}
 // NewImportPluginsStep creates the pipeline step that restores plugin archives
 // into wp-content.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ImportPluginsStep instance
 func NewImportPluginsStep() *ImportPluginsStep {
@@ -17,9 +14,6 @@ func NewImportPluginsStep() *ImportPluginsStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

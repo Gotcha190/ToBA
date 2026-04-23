@@ -8,9 +8,6 @@ type ActivateThemeStep struct{}
 // NewActivateThemeStep creates the pipeline step responsible for activating
 // the final WordPress theme after import and restore.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ActivateThemeStep instance
 func NewActivateThemeStep() *ActivateThemeStep {
@@ -18,9 +15,6 @@ func NewActivateThemeStep() *ActivateThemeStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

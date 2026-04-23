@@ -7,9 +7,6 @@ type ImportOthersStep struct{}
 // NewImportOthersStep creates the pipeline step that restores optional
 // "others" archives into wp-content.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ImportOthersStep instance
 func NewImportOthersStep() *ImportOthersStep {
@@ -17,9 +14,6 @@ func NewImportOthersStep() *ImportOthersStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

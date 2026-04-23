@@ -14,9 +14,6 @@ type GenerateLandoConfigStep struct{}
 // NewGenerateLandoConfigStep creates the pipeline step that writes the local
 // Lando, PHP, and WP-CLI configuration files.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured GenerateLandoConfigStep instance
 func NewGenerateLandoConfigStep() *GenerateLandoConfigStep {
@@ -24,9 +21,6 @@ func NewGenerateLandoConfigStep() *GenerateLandoConfigStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

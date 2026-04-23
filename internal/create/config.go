@@ -22,9 +22,6 @@ type ProjectConfig struct {
 // Normalize validates the project name and fills the derived defaults required
 // by the create workflow.
 //
-// Parameters:
-// - none; the receiver fields are normalized in place
-//
 // Returns:
 // - an error when the project name is empty or contains unsupported characters
 //

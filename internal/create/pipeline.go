@@ -85,6 +85,19 @@ func (p *Pipeline) Run(ctx *Context) error {
 	return nil
 }
 
+// runDependencyGraph executes pipeline nodes as soon as their dependencies
+// complete.
+//
+// Parameters:
+// - ctx: shared workflow context passed to every pipeline step
+//
+// Returns:
+// - the first step error, or an error when the dependency graph is invalid
+//
+// Side effects:
+// - runs ready steps concurrently
+// - writes progress, success, and error messages through the logger
+// - records timings when a recorder is configured
 func (p *Pipeline) runDependencyGraph(ctx *Context) error {
 	type nodeState struct {
 		def        StepNode
@@ -225,6 +238,11 @@ func (p *Pipeline) runDependencyGraph(ctx *Context) error {
 	return nil
 }
 
+// stages resolves the pipeline's stage list from explicit stages or legacy
+// sequential steps.
+//
+// Returns:
+// - configured stages, generated single-step stages, or nil when the pipeline is empty
 func (p *Pipeline) stages() []Stage {
 	if len(p.Stages) > 0 {
 		return p.Stages
@@ -245,6 +263,18 @@ func (p *Pipeline) stages() []Stage {
 	return stages
 }
 
+// runSequentialStage executes each step in stage one after another.
+//
+// Parameters:
+// - ctx: shared workflow context passed to every stage step
+// - stage: stage definition to execute
+//
+// Returns:
+// - the first step error, or nil when every step succeeds
+//
+// Side effects:
+// - writes progress and success messages through the logger
+// - records timings when a recorder is configured
 func (p *Pipeline) runSequentialStage(ctx *Context, stage Stage) error {
 	for _, step := range stage.Steps {
 		ctx.Logger.Step(step.Name())
@@ -262,6 +292,19 @@ func (p *Pipeline) runSequentialStage(ctx *Context, stage Stage) error {
 	return nil
 }
 
+// runParallelStage executes all steps in stage concurrently and waits for all
+// of them to finish.
+//
+// Parameters:
+// - ctx: shared workflow context passed to every stage step
+// - stage: stage definition to execute
+//
+// Returns:
+// - the first step error in stage order, or nil when every step succeeds
+//
+// Side effects:
+// - writes progress and success messages through the logger
+// - records timings when a recorder is configured
 func (p *Pipeline) runParallelStage(ctx *Context, stage Stage) error {
 	type stepResult struct {
 		timing StepTiming
@@ -305,6 +348,19 @@ func (p *Pipeline) runParallelStage(ctx *Context, stage Stage) error {
 	return firstErr
 }
 
+// runStep executes step and captures its timing metadata.
+//
+// Parameters:
+// - ctx: shared workflow context passed to the step
+// - stageName: logical stage or node identifier for timing output
+// - step: pipeline step to execute
+//
+// Returns:
+// - timing metadata for the executed step
+// - an error when the step fails
+//
+// Side effects:
+// - invokes the step's Run method
 func runStep(ctx *Context, stageName string, step Step) (StepTiming, error) {
 	startedAt := time.Now()
 	err := step.Run(ctx)
@@ -319,6 +375,16 @@ func runStep(ctx *Context, stageName string, step Step) (StepTiming, error) {
 	}, err
 }
 
+// recordTiming forwards timing metadata to the configured recorder.
+//
+// Parameters:
+// - timing: completed step timing metadata
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - calls the configured timing recorder when present
 func (p *Pipeline) recordTiming(timing StepTiming) {
 	if p.Recorder == nil {
 		return
@@ -327,6 +393,18 @@ func (p *Pipeline) recordTiming(timing StepTiming) {
 	p.Recorder.RecordStepTiming(timing)
 }
 
+// logStepError writes a coded or generic step error through logger.
+//
+// Parameters:
+// - logger: logger used for the error message
+// - step: step that failed
+// - err: error returned by the step
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - writes one error line through logger
 func logStepError(logger Logger, step Step, err error) {
 	var coded codeCarrier
 	if errors.As(err, &coded) {
@@ -342,6 +420,13 @@ type synchronizedLogger struct {
 	mu   sync.Mutex
 }
 
+// newSynchronizedLogger wraps next with a mutex-protected logger.
+//
+// Parameters:
+// - next: logger to wrap
+//
+// Returns:
+// - a synchronized logger, nil, or next when it is already synchronized
 func newSynchronizedLogger(next Logger) Logger {
 	if next == nil {
 		return nil
@@ -354,48 +439,129 @@ func newSynchronizedLogger(next Logger) Logger {
 	return &synchronizedLogger{next: next}
 }
 
+// Step writes a synchronized step message.
+//
+// Parameters:
+// - msg: step label to display
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
 func (l *synchronizedLogger) Step(msg string) {
 	l.withLock(func() {
 		l.next.Step(msg)
 	})
 }
 
+// Info writes a synchronized informational message.
+//
+// Parameters:
+// - msg: informational message to display
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
 func (l *synchronizedLogger) Info(msg string) {
 	l.withLock(func() {
 		l.next.Info(msg)
 	})
 }
 
+// Prompt writes a synchronized prompt message.
+//
+// Parameters:
+// - msg: prompt text to display
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
 func (l *synchronizedLogger) Prompt(msg string) {
 	l.withLock(func() {
 		l.next.Prompt(msg)
 	})
 }
 
+// Warning writes a synchronized warning message.
+//
+// Parameters:
+// - msg: warning message to display
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
 func (l *synchronizedLogger) Warning(msg string) {
 	l.withLock(func() {
 		l.next.Warning(msg)
 	})
 }
 
+// Success writes a synchronized success message.
+//
+// Parameters:
+// - msg: success message to display
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
 func (l *synchronizedLogger) Success(msg string) {
 	l.withLock(func() {
 		l.next.Success(msg)
 	})
 }
 
+// Error writes a synchronized error message.
+//
+// Parameters:
+// - msg: error message to display
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
 func (l *synchronizedLogger) Error(msg string) {
 	l.withLock(func() {
 		l.next.Error(msg)
 	})
 }
 
+// ErrorCode writes a synchronized coded error message.
+//
+// Parameters:
+// - code: symbolic error code
+// - msg: human-readable error message
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
 func (l *synchronizedLogger) ErrorCode(code string, msg string) {
 	l.withLock(func() {
 		l.next.ErrorCode(code, msg)
 	})
 }
 
+// withLock runs fn while holding the logger mutex.
+//
+// Parameters:
+// - fn: callback to execute while locked
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - serializes access to the wrapped logger
 func (l *synchronizedLogger) withLock(fn func()) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

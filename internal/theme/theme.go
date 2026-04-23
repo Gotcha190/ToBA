@@ -18,9 +18,6 @@ type MissingStarterRepoError struct{}
 
 // Error explains how to provide the missing starter repository setting.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - the human-readable error string
 func (e MissingStarterRepoError) Error() string {
@@ -124,6 +121,10 @@ func Build(runner create.CommandRunner, themeDir string) error {
 	return nil
 }
 
+// composerInstallCommand returns the optimized Composer install command.
+//
+// Returns:
+// - the command definition used for PHP dependency installation
 func composerInstallCommand() buildCommand {
 	return buildCommand{
 		cmd:  "lando",
@@ -131,6 +132,10 @@ func composerInstallCommand() buildCommand {
 	}
 }
 
+// npmInstallCommand returns the preferred Node dependency install command.
+//
+// Returns:
+// - the command definition used for lockfile-based Node dependency installation
 func npmInstallCommand() buildCommand {
 	return buildCommand{
 		cmd:  "npm",
@@ -138,6 +143,11 @@ func npmInstallCommand() buildCommand {
 	}
 }
 
+// npmInstallFallbackCommand returns the fallback Node dependency install
+// command.
+//
+// Returns:
+// - the command definition used when npm ci fails
 func npmInstallFallbackCommand() buildCommand {
 	return buildCommand{
 		cmd:  "npm",
@@ -145,6 +155,10 @@ func npmInstallFallbackCommand() buildCommand {
 	}
 }
 
+// buildThemeCommand returns the frontend production build command.
+//
+// Returns:
+// - the command definition used to build theme assets
 func buildThemeCommand() buildCommand {
 	return buildCommand{
 		cmd:  "npm",
@@ -152,6 +166,14 @@ func buildThemeCommand() buildCommand {
 	}
 }
 
+// wrapBuildError attaches the theme build error code to a command failure.
+//
+// Parameters:
+// - command: command family that failed
+// - err: underlying command execution error
+//
+// Returns:
+// - a coded theme build error
 func wrapBuildError(command string, err error) error {
 	switch command {
 	case "lando":

@@ -191,6 +191,13 @@ func BackupSourceURL(sqlPath string) (string, error) {
 // BackupTablePrefix reads the original WordPress table prefix from SQL backup
 // metadata, falling back to the default prefix when the dump does not expose
 // one.
+//
+// Parameters:
+// - sqlPath: SQL dump path to inspect
+//
+// Returns:
+// - the detected or default table prefix
+// - an error when the file cannot be read or metadata is invalid
 func BackupTablePrefix(sqlPath string) (string, error) {
 	file, err := os.Open(sqlPath)
 	if err != nil {
@@ -259,6 +266,16 @@ func SearchReplace(runner create.CommandRunner, projectDir string, sourceURL str
 }
 
 // SetConfigTablePrefix updates the wp-config.php table prefix assignment.
+//
+// Parameters:
+// - wpConfigPath: path to the WordPress config file to update
+// - prefix: table prefix value to write
+//
+// Returns:
+// - an error when the prefix is invalid or the config file cannot be updated
+//
+// Side effects:
+// - writes wpConfigPath when the table prefix assignment is found
 func SetConfigTablePrefix(wpConfigPath string, prefix string) error {
 	prefix, err := normalizeTablePrefix(prefix)
 	if err != nil {
@@ -284,6 +301,17 @@ func SetConfigTablePrefix(wpConfigPath string, prefix string) error {
 	return os.WriteFile(wpConfigPath, []byte(updated), info.Mode().Perm())
 }
 
+// includeProjectConfigIfPresent injects the project config include when a
+// root config.php file exists.
+//
+// Parameters:
+// - projectDir: local project root
+//
+// Returns:
+// - an error when config detection or wp-config.php update fails
+//
+// Side effects:
+// - may update app/wp-config.php
 func includeProjectConfigIfPresent(projectDir string) error {
 	projectConfigPath := filepath.Join(projectDir, "config.php")
 	if _, err := os.Stat(projectConfigPath); err != nil {
@@ -296,6 +324,17 @@ func includeProjectConfigIfPresent(projectDir string) error {
 	return setProjectConfigInclude(filepath.Join(projectDir, "app", "wp-config.php"))
 }
 
+// setProjectConfigInclude inserts the project config include block into
+// wp-config.php.
+//
+// Parameters:
+// - wpConfigPath: path to the WordPress config file to update
+//
+// Returns:
+// - an error when the file cannot be read, parsed, or written
+//
+// Side effects:
+// - writes wpConfigPath when the include block is missing
 func setProjectConfigInclude(wpConfigPath string) error {
 	content, err := os.ReadFile(wpConfigPath)
 	if err != nil {
@@ -326,6 +365,21 @@ func setProjectConfigInclude(wpConfigPath string) error {
 	return os.WriteFile(wpConfigPath, []byte(updated), info.Mode().Perm())
 }
 
+// replaceInDatabase runs a WP-CLI search-replace command for local database
+// content.
+//
+// Parameters:
+// - runner: command runner used to launch WP-CLI
+// - projectDir: local project root
+// - search: source value to replace
+// - replace: replacement value
+// - errPrefix: context prefix for returned errors
+//
+// Returns:
+// - an error when the search-replace command fails
+//
+// Side effects:
+// - runs `lando wp search-replace`
 func replaceInDatabase(runner create.CommandRunner, projectDir string, search string, replace string, errPrefix string) error {
 	if err := runner.Run(
 		projectDir,
@@ -343,6 +397,14 @@ func replaceInDatabase(runner create.CommandRunner, projectDir string, search st
 	return nil
 }
 
+// normalizeTablePrefix trims and validates a WordPress table prefix.
+//
+// Parameters:
+// - prefix: raw table prefix value
+//
+// Returns:
+// - the normalized prefix
+// - an error when the prefix is empty or contains invalid characters
 func normalizeTablePrefix(prefix string) (string, error) {
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
@@ -357,6 +419,13 @@ func normalizeTablePrefix(prefix string) (string, error) {
 	return prefix, nil
 }
 
+// tableNameFromLine extracts a SQL table name from supported dump lines.
+//
+// Parameters:
+// - line: SQL dump line to inspect
+//
+// Returns:
+// - the table name, or an empty string when none can be parsed
 func tableNameFromLine(line string) string {
 	for _, marker := range []string{"# Table: `", "CREATE TABLE `", "DROP TABLE IF EXISTS `"} {
 		if !strings.HasPrefix(line, marker) {
@@ -373,6 +442,14 @@ func tableNameFromLine(line string) string {
 	return ""
 }
 
+// tablePrefixFromTableName infers a WordPress table prefix from a table name.
+//
+// Parameters:
+// - tableName: database table name to inspect
+//
+// Returns:
+// - the inferred table prefix
+// - true when the table name matches a known WordPress table suffix
 func tablePrefixFromTableName(tableName string) (string, bool) {
 	for _, suffix := range []string{
 		"options",
@@ -403,10 +480,29 @@ func tablePrefixFromTableName(tableName string) (string, bool) {
 
 var errStopReading = errors.New("stop reading")
 
+// scanMetadataHeader scans the bounded SQL dump header for metadata lines.
+//
+// Parameters:
+// - file: SQL dump file positioned at the beginning
+// - fn: callback invoked for each line
+//
+// Returns:
+// - an error returned by the reader or callback
+//
+// Side effects:
+// - advances the file read position
 func scanMetadataHeader(file *os.File, fn func(line string) error) error {
 	return forEachLine(io.LimitReader(file, metadataHeaderLimit), fn)
 }
 
+// forEachLine streams lines from reader without imposing scanner token limits.
+//
+// Parameters:
+// - reader: source stream to read
+// - fn: callback invoked for each line
+//
+// Returns:
+// - an error returned by the reader or callback
 func forEachLine(reader io.Reader, fn func(line string) error) error {
 	buf := make([]byte, 0, 64*1024)
 	lineBuf := bytes.NewBuffer(buf)
@@ -609,6 +705,18 @@ func RefreshThemeCaches(runner create.CommandRunner, projectDir string) error {
 	return nil
 }
 
+// runLandoWPBatch runs one or more WP-CLI commands inside the Lando appserver.
+//
+// Parameters:
+// - runner: command runner used to launch Lando
+// - projectDir: local project root
+// - commands: shell command fragments to run in sequence
+//
+// Returns:
+// - an error when the Lando shell command fails
+//
+// Side effects:
+// - runs `lando ssh -s appserver -c ...`
 func runLandoWPBatch(runner create.CommandRunner, projectDir string, commands ...string) error {
 	if len(commands) == 0 {
 		return nil
@@ -618,14 +726,37 @@ func runLandoWPBatch(runner create.CommandRunner, projectDir string, commands ..
 	return runner.Run(projectDir, "lando", "ssh", "-s", "appserver", "-c", script)
 }
 
+// shellQuote quotes value for POSIX shell command construction.
+//
+// Parameters:
+// - value: raw string to quote
+//
+// Returns:
+// - the shell-quoted string
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
+// phpSingleQuote quotes value for PHP single-quoted string literals.
+//
+// Parameters:
+// - value: raw string to quote
+//
+// Returns:
+// - the PHP single-quoted string literal
 func phpSingleQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `\'`) + "'"
 }
 
+// acornCommandAvailable reports whether an Acorn command appears in command
+// list output.
+//
+// Parameters:
+// - listOutput: output from `wp acorn list`
+// - command: Acorn command name to search for
+//
+// Returns:
+// - true when command is present
 func acornCommandAvailable(listOutput string, command string) bool {
 	for _, line := range strings.Split(listOutput, "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))

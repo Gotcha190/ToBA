@@ -10,9 +10,6 @@ import (
 // RunDoctor executes the dependency checks required by the full create
 // workflow.
 //
-// Parameters:
-// - none
-//
 // Returns:
 //   - an error when the current working directory cannot be resolved or one of
 //     the required dependencies is missing

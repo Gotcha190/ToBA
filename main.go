@@ -6,11 +6,8 @@ import "github.com/gotcha190/toba/cmd"
 //
 // It delegates all CLI parsing and command dispatch to the cmd package.
 //
-// Parameters:
-// - none
-//
 // Returns:
-// - nothing
+// - null
 //
 // Side effects:
 //   - executes the selected CLI command and may terminate the process through

@@ -9,9 +9,6 @@ type StartLandoStep struct{}
 
 // NewStartLandoStep creates the pipeline step that starts the local Lando app.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured StartLandoStep instance
 func NewStartLandoStep() *StartLandoStep {
@@ -19,9 +16,6 @@ func NewStartLandoStep() *StartLandoStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

@@ -8,9 +8,6 @@ import (
 // makeStarterTempDir creates a temporary working directory for prepared
 // starter assets.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - the temporary directory path
 // - an error when the OS cannot create the directory

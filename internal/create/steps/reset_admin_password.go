@@ -8,9 +8,6 @@ type ResetAdminPasswordStep struct{}
 // NewResetAdminPasswordStep creates the pipeline step that restores the
 // default local admin password.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ResetAdminPasswordStep instance
 func NewResetAdminPasswordStep() *ResetAdminPasswordStep {
@@ -18,9 +15,6 @@ func NewResetAdminPasswordStep() *ResetAdminPasswordStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

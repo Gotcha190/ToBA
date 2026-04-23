@@ -11,9 +11,6 @@ type DoctorStep struct{}
 
 // NewDoctorStep creates the pipeline step that checks required external tools.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured DoctorStep instance
 func NewDoctorStep() *DoctorStep {
@@ -21,9 +18,6 @@ func NewDoctorStep() *DoctorStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

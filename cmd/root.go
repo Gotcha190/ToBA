@@ -21,11 +21,8 @@ const usageBanner = `
 // Execute parses the root command name from os.Args and dispatches execution
 // to the matching CLI handler.
 //
-// Parameters:
-// - none
-//
 // Returns:
-// - nothing
+// - null
 //
 // Side effects:
 //   - writes usage text to stdout when no command is provided
@@ -146,11 +143,8 @@ func runConfig(args []string) error {
 // printUsage prints the ASCII banner, the root usage line, and the list of
 // available CLI commands.
 //
-// Parameters:
-// - none
-//
 // Returns:
-// - nothing
+// - null
 //
 // Side effects:
 // - writes formatted help text to stdout

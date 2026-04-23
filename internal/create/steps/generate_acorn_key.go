@@ -10,9 +10,6 @@ type GenerateAcornKeyStep struct{}
 // NewGenerateAcornKeyStep creates the pipeline step that generates the Acorn
 // key for starter-repo based themes.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured GenerateAcornKeyStep instance
 func NewGenerateAcornKeyStep() *GenerateAcornKeyStep {
@@ -20,9 +17,6 @@ func NewGenerateAcornKeyStep() *GenerateAcornKeyStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

@@ -7,9 +7,6 @@ type CollectConfigStep struct{}
 // NewCollectConfigStep creates the pipeline step that normalizes and logs the
 // project configuration.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured CollectConfigStep instance
 func NewCollectConfigStep() *CollectConfigStep {
@@ -17,9 +14,6 @@ func NewCollectConfigStep() *CollectConfigStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

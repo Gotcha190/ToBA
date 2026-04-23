@@ -18,7 +18,7 @@ import (
 // - input: reader used to collect interactive confirmation from the user
 //
 // Returns:
-// - nothing
+// - null
 //
 // Side effects:
 // - prompts the user for confirmation

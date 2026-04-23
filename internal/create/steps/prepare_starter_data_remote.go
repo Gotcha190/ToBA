@@ -145,6 +145,20 @@ type remoteStarterDownload struct {
 	localPath  string
 }
 
+// downloadRemoteStarterFiles downloads prepared starter artifacts from the SSH
+// host in parallel.
+//
+// Parameters:
+// - ctx: shared create context containing runner and logger state
+// - target: parsed SSH destination
+// - downloads: remote-to-local artifact copy definitions
+//
+// Returns:
+// - the first download error, or nil when every download succeeds
+//
+// Side effects:
+// - creates local parent directories through copyRemoteFile
+// - runs scp commands through the configured runner
 func downloadRemoteStarterFiles(ctx *create.Context, target sshTarget, downloads []remoteStarterDownload) error {
 	var once sync.Once
 	var runErr error
@@ -168,6 +182,18 @@ func downloadRemoteStarterFiles(ctx *create.Context, target sshTarget, downloads
 	return runErr
 }
 
+// remoteStarterPreparationScript builds the shell script that prepares remote
+// starter artifacts.
+//
+// Parameters:
+// - remoteWordPressRoot: remote WordPress installation root
+// - remoteDatabase: remote database dump path to create
+// - remotePlugins: remote plugins archive path to create
+// - remoteUploads: remote uploads archive path to create
+// - remoteSourceURL: remote source URL marker path to create
+//
+// Returns:
+// - the shell script executed on the SSH host
 func remoteStarterPreparationScript(remoteWordPressRoot string, remoteDatabase string, remotePlugins string, remoteUploads string, remoteSourceURL string) string {
 	return strings.Join([]string{
 		"set -eu",

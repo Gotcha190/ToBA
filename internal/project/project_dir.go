@@ -8,9 +8,6 @@ type ErrDirExists struct {
 
 // Error formats the path of the directory that already exists.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - the human-readable error string
 func (e ErrDirExists) Error() string {

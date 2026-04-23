@@ -10,9 +10,6 @@ type InstallWordPressStep struct{}
 // NewInstallWordPressStep creates the pipeline step that downloads and installs
 // WordPress inside the local Lando project.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured InstallWordPressStep instance
 func NewInstallWordPressStep() *InstallWordPressStep {
@@ -20,9 +17,6 @@ func NewInstallWordPressStep() *InstallWordPressStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

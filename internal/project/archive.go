@@ -134,6 +134,17 @@ type zipExtractionPlan struct {
 	canRunDirect bool
 }
 
+// newZipExtractionPlan validates archive entries and prepares extraction
+// metadata for one zip file.
+//
+// Parameters:
+// - sourcePath: zip archive path used in error messages and direct extraction
+// - reader: parsed zip archive reader
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - the prepared extraction plan
+// - an error when any archive entry is unsafe
 func newZipExtractionPlan(sourcePath string, reader *zip.Reader, destDir string) (zipExtractionPlan, error) {
 	entries, err := buildZipEntryPlans(reader, destDir)
 	if err != nil {
@@ -165,6 +176,16 @@ func newZipExtractionPlan(sourcePath string, reader *zip.Reader, destDir string)
 	}, nil
 }
 
+// extract runs this zip extraction plan.
+//
+// Parameters:
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - an error when extraction fails
+//
+// Side effects:
+// - writes extracted directories and files under destDir
 func (p zipExtractionPlan) extract(destDir string) error {
 	if p.canRunDirect && canUseSystemUnzip() {
 		if err := extractZipWithSystemUnzip(p.sourcePath, destDir, p.entries, p.fileNames); err != nil {
@@ -186,6 +207,14 @@ func (p zipExtractionPlan) extract(destDir string) error {
 	return nil
 }
 
+// zipPlansAreIndependent reports whether extraction plans write disjoint
+// target files.
+//
+// Parameters:
+// - plans: prepared zip extraction plans to compare
+//
+// Returns:
+// - true when no two plans write the same file target
 func zipPlansAreIndependent(plans []zipExtractionPlan) bool {
 	seen := make(map[string]struct{})
 	for _, plan := range plans {
@@ -200,6 +229,18 @@ func zipPlansAreIndependent(plans []zipExtractionPlan) bool {
 	return true
 }
 
+// extractZipPlansInParallel extracts independent zip plans using worker
+// goroutines.
+//
+// Parameters:
+// - plans: prepared zip extraction plans
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - an error when any plan extraction fails
+//
+// Side effects:
+// - writes extracted directories and files under destDir
 func extractZipPlansInParallel(plans []zipExtractionPlan, destDir string) error {
 	workers := runtime.GOMAXPROCS(0)
 	if workers < 1 {
@@ -242,6 +283,10 @@ func extractZipPlansInParallel(plans []zipExtractionPlan, destDir string) error 
 	return nil
 }
 
+// canUseSystemUnzip reports whether the system unzip binary is available.
+//
+// Returns:
+// - true when unzip can be found on PATH
 func canUseSystemUnzip() bool {
 	_, err := exec.LookPath("unzip")
 	return err == nil
@@ -249,6 +294,21 @@ func canUseSystemUnzip() bool {
 
 const unzipBatchSize = 256
 
+// extractZipWithSystemUnzip extracts selected files with the system unzip
+// binary after creating required directories.
+//
+// Parameters:
+// - sourcePath: zip archive path on disk
+// - destDir: destination directory for extracted files
+// - entries: validated archive entries
+// - fileNames: file entry names to pass to unzip
+//
+// Returns:
+// - an error when directory creation or unzip execution fails
+//
+// Side effects:
+// - creates directories under destDir
+// - executes the system unzip binary
 func extractZipWithSystemUnzip(sourcePath string, destDir string, entries []zipEntryPlan, fileNames []string) error {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return err
@@ -315,6 +375,16 @@ func extractZip(reader *zip.Reader, destDir string) error {
 	return extractZipEntries(reader, entries)
 }
 
+// buildZipEntryPlans validates archive entries and resolves their destination
+// paths.
+//
+// Parameters:
+// - reader: parsed zip archive reader
+// - destDir: destination directory for extracted files
+//
+// Returns:
+// - validated entry plans
+// - an error when an entry is unsafe
 func buildZipEntryPlans(reader *zip.Reader, destDir string) ([]zipEntryPlan, error) {
 	entries := make([]zipEntryPlan, 0, len(reader.File))
 	for _, file := range reader.File {
@@ -344,6 +414,17 @@ func buildZipEntryPlans(reader *zip.Reader, destDir string) ([]zipEntryPlan, err
 	return entries, nil
 }
 
+// extractZipEntries writes validated zip entries to disk.
+//
+// Parameters:
+// - reader: parsed zip archive reader
+// - entries: validated archive entries to extract
+//
+// Returns:
+// - an error when any entry cannot be read or written
+//
+// Side effects:
+// - creates directories and files for extracted entries
 func extractZipEntries(reader *zip.Reader, entries []zipEntryPlan) error {
 	zipFiles := make(map[string]*zip.File, len(reader.File))
 	for _, file := range reader.File {

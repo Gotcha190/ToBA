@@ -15,9 +15,6 @@ type ImportDatabaseStep struct{}
 // NewImportDatabaseStep creates the pipeline step that prepares and imports
 // the starter database dump.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ImportDatabaseStep instance
 func NewImportDatabaseStep() *ImportDatabaseStep {
@@ -25,9 +22,6 @@ func NewImportDatabaseStep() *ImportDatabaseStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

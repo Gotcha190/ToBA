@@ -11,9 +11,6 @@ import (
 
 // RunConfig initializes or refreshes the shared global ToBA configuration.
 //
-// Parameters:
-// - none
-//
 // Returns:
 //   - an error when the configuration source cannot be resolved, the target
 //     path cannot be written, or user interaction fails unexpectedly

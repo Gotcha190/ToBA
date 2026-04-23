@@ -12,9 +12,6 @@ type BuildThemeStep struct{}
 // NewBuildThemeStep creates the pipeline step that builds the starter theme
 // when the theme comes from a cloned repository.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured BuildThemeStep instance
 func NewBuildThemeStep() *BuildThemeStep {
@@ -22,9 +19,6 @@ func NewBuildThemeStep() *BuildThemeStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

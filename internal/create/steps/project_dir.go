@@ -15,9 +15,6 @@ type ProjectDirStep struct{}
 // NewProjectDirStep creates the pipeline step that creates or reuses the
 // project directory layout.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured ProjectDirStep instance
 func NewProjectDirStep() *ProjectDirStep {
@@ -25,9 +22,6 @@ func NewProjectDirStep() *ProjectDirStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging

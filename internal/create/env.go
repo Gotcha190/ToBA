@@ -19,9 +19,6 @@ const globalConfigDirName = "toba"
 // LoadEnvConfig loads the global ToBA configuration and returns only the
 // resolved ProjectConfig value.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - the resolved project configuration
 // - an error when the global config path or file content cannot be read
@@ -32,9 +29,6 @@ func LoadEnvConfig() (ProjectConfig, error) {
 
 // ResolveEnvConfig loads the global ToBA configuration file and returns the
 // parsed config together with source metadata.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the parsed project configuration
@@ -69,9 +63,6 @@ func ResolveEnvConfig() (ProjectConfig, string, bool, error) {
 
 // GlobalEnvPath returns the absolute path to the shared ToBA config file in
 // the user's config directory.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the absolute config path

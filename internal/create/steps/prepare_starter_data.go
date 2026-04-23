@@ -18,9 +18,6 @@ type PrepareStarterDataStep struct{}
 // NewPrepareStarterDataStep creates the pipeline step that selects and
 // prepares the starter data source for the run.
 //
-// Parameters:
-// - none
-//
 // Returns:
 // - a configured PrepareStarterDataStep instance
 func NewPrepareStarterDataStep() *PrepareStarterDataStep {
@@ -28,9 +25,6 @@ func NewPrepareStarterDataStep() *PrepareStarterDataStep {
 }
 
 // Name returns the human-readable pipeline label for this step.
-//
-// Parameters:
-// - none
 //
 // Returns:
 // - the display name used by pipeline logging
