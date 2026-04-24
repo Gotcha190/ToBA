@@ -876,7 +876,9 @@ func writeZipFixture(path string, files map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer output.Close()
+	defer func() {
+		_ = output.Close()
+	}()
 
 	writer := zip.NewWriter(output)
 	for fileName, content := range files {

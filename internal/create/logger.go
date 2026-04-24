@@ -53,7 +53,7 @@ func (l ConsoleLogger) Info(msg string) {
 // Returns:
 // - null
 func (l ConsoleLogger) Prompt(msg string) {
-	fmt.Fprint(l.writer(), "[PROMPT] ", msg)
+	_, _ = fmt.Fprint(l.writer(), "[PROMPT] ", msg)
 }
 
 // Success writes a success message to the configured output.
@@ -121,7 +121,7 @@ func NewConsoleLogger(out io.Writer) Logger {
 // Returns:
 // - null
 func (l ConsoleLogger) println(prefix string, msg string) {
-	fmt.Fprintln(l.writer(), prefix, msg)
+	_, _ = fmt.Fprintln(l.writer(), prefix, msg)
 }
 
 // writer returns the configured output writer or stdout when none is set.

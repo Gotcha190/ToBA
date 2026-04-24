@@ -245,7 +245,9 @@ func writeZipFixture(t *testing.T, dir string, name string, files map[string]str
 	if err != nil {
 		t.Fatalf("failed to create %s: %v", path, err)
 	}
-	defer output.Close()
+	defer func() {
+		_ = output.Close()
+	}()
 
 	writer := zip.NewWriter(output)
 	for fileName, content := range files {

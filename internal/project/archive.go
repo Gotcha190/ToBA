@@ -51,7 +51,9 @@ func ExtractZipFile(sourcePath string, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -198,7 +200,9 @@ func (p zipExtractionPlan) extract(destDir string) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", p.sourcePath, err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	if err := extractZipEntries(&reader.Reader, p.entries); err != nil {
 		return fmt.Errorf("extract %s: %w", p.sourcePath, err)
@@ -455,7 +459,7 @@ func extractZipEntries(reader *zip.Reader, entries []zipEntryPlan) error {
 
 		output, err := os.OpenFile(entry.targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, entry.mode)
 		if err != nil {
-			input.Close()
+			_ = input.Close()
 			return err
 		}
 
@@ -493,7 +497,9 @@ func WriteGzipFile(data []byte, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	return copyReaderToFile(reader, destPath, 0644)
 }
@@ -515,13 +521,17 @@ func WriteGzipPath(sourcePath string, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() {
+		_ = source.Close()
+	}()
 
 	reader, err := gzip.NewReader(source)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	return copyReaderToFile(reader, destPath, 0644)
 }
@@ -544,7 +554,9 @@ func CopyFile(sourcePath string, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() {
+		_ = source.Close()
+	}()
 
 	info, err := source.Stat()
 	if err != nil {
@@ -581,7 +593,9 @@ func copyReaderToFile(reader io.Reader, destPath string, mode os.FileMode) error
 	if err != nil {
 		return err
 	}
-	defer output.Close()
+	defer func() {
+		_ = output.Close()
+	}()
 
 	if _, err := io.Copy(output, reader); err != nil {
 		return err

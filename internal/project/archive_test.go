@@ -254,7 +254,9 @@ func zipFileWithDirs(t *testing.T, dir string, name string, dirs []string, files
 	if err != nil {
 		t.Fatalf("failed to create %s: %v", path, err)
 	}
-	defer output.Close()
+	defer func() {
+		_ = output.Close()
+	}()
 
 	writer := zip.NewWriter(output)
 	for _, entryName := range dirs {

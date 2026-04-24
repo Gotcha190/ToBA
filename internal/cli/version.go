@@ -43,7 +43,7 @@ func RunVersion() {
 // Side effects:
 // - writes the version followed by a newline
 func runVersionWithWriter(output io.Writer) {
-	fmt.Fprintf(output, "toba version: %s\n", resolvedVersion())
+	_, _ = fmt.Fprintf(output, "toba version: %s\n", resolvedVersion())
 }
 
 // resolvedVersion picks the best available version string for the current

@@ -15,11 +15,13 @@ func TestPrintUsageDoesNotMentionUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pipe: %v", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	os.Stdout = writer
 	printUsage()
-	writer.Close()
+	_ = writer.Close()
 	os.Stdout = stdout
 
 	output, readErr := io.ReadAll(reader)
@@ -38,11 +40,13 @@ func TestPrintUsageStartsWithBanner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pipe: %v", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	os.Stdout = writer
 	printUsage()
-	writer.Close()
+	_ = writer.Close()
 	os.Stdout = stdout
 
 	output, readErr := io.ReadAll(reader)

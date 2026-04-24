@@ -147,7 +147,9 @@ func BackupSourceURL(sqlPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	var backupURL string
 	parseLine := func(line string) error {
@@ -203,7 +205,9 @@ func BackupTablePrefix(sqlPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	var tablePrefix string
 	parseLine := func(line string) error {
