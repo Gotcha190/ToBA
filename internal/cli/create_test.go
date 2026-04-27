@@ -637,7 +637,7 @@ func TestBuildCreatePipelineOverlapsRemoteBootstrapWhenProjectDirDoesNotExist(t 
 	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir"})
 	assertNodeDependsOn(t, pipeline.Nodes, "import-plugins", []string{"project-dir", "prepare-starter-data"})
 	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
-	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data", "install-theme", "import-plugins", "import-others"})
 }
 
 func TestBuildCreatePipelineKeepsPrepareStarterDataAheadOfProjectDirForExistingProject(t *testing.T) {
