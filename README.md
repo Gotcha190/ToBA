@@ -32,7 +32,7 @@ Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
 - `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
 
-Od wersji `1.2.0` przepływ `create` wykonuje niezależne kroki równolegle tam, gdzie jest to bezpieczne. Dotyczy to między innymi przygotowania danych przez SSH, pobierania zdalnych artefaktów, przywracania wielu archiwów oraz instalacji zależności theme.
+Od wersji `1.2.1` przepływ `create` wykonuje niezależne kroki równolegle tam, gdzie jest to bezpieczne. Dotyczy to między innymi przygotowania danych przez SSH, pobierania zdalnych artefaktów, przywracania wielu archiwów oraz instalacji zależności theme, przy zachowaniu bezpieczniejszych zależności przed pierwszymi operacjami WP-CLI na zaimportowanej bazie.
 
 ## Wymagania
 
@@ -83,7 +83,7 @@ go install .
 Wersjonowanie binarki:
 
 - release build pokazuje `toba version: <version>` ustawione podczas wydania
-- lokalny build z checkoutu repo pokazuje `toba version: 1.2.0 dev`
+- lokalny build z checkoutu repo pokazuje `toba version: 1.2.1 dev`
 
 ## Szybki start
 
@@ -175,18 +175,20 @@ toba version
 6. instaluje WordPress i tworzy `wp-config.php`,
 7. instaluje albo przywraca theme,
 8. buduje starter theme,
-9. przywraca plugins, uploads, database opcjonalne others,
-10. wykrywa prefix tabel i w razie potrzeby aktualizuje `wp-config.php`,
-11. wykonuje `search-replace` na lokalną domenę,
-12. resetuje albo tworzy lokalnego administratora `tamago`,
-13. aktywuje theme,
-14. czyści cache i odświeża rewrite rules.
+9. przywraca plugins, uploads i opcjonalne others,
+10. przygotowuje i importuje database,
+11. wykrywa prefix tabel i w razie potrzeby aktualizuje `wp-config.php`,
+12. wykonuje `search-replace` na lokalną domenę,
+13. resetuje albo tworzy lokalnego administratora `tamago`,
+14. aktywuje theme,
+15. czyści cache i odświeża rewrite rules.
 
 Pipeline jest grafem zależności, więc niezależne kroki nie muszą czekać na zakończenie całej poprzedniej warstwy. Przykłady:
 
 - w SSH mode przygotowanie danych zdalnych może nakładać się na tworzenie lokalnego projektu,
 - import `plugins`, `uploads`, `others` i instalacja WordPressa mogą wykonywać się niezależnie po spełnieniu swoich zależności,
 - theme build może wystartować po dostępności Lando, theme i plugins,
+- import bazy i pierwszy `wp search-replace` czekają na wymagane przywrócenie pluginów i innych zależnych plików,
 - końcowe kroki cache/rewrite uruchamiają się dopiero po wymaganych importach i aktywacji theme.
 
 ## Tryby danych startowych

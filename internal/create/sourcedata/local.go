@@ -1,4 +1,4 @@
-package steps
+package sourcedata
 
 import (
 	"fmt"
@@ -7,19 +7,19 @@ import (
 	"github.com/gotcha190/toba/internal/updraft"
 )
 
-// prepareLocalStarterData validates an existing project directory as a local
-// Updraft backup source and copies its files into a temp workspace.
+// prepareLocal validates an existing project directory as a local Updraft
+// backup source.
 //
 // Parameters:
 // - ctx: shared create context containing project paths and mutable starter-data state
 //
 // Returns:
-// - an error when the local backup set is empty, invalid, incomplete, or cannot be copied
+// - an error when the local backup set is empty, invalid, or incomplete
 //
 // Side effects:
 // - marks the run as using an existing project directory
 // - populates ctx.StarterData with local backup paths
-func prepareLocalStarterData(ctx *create.Context) error {
+func prepareLocal(ctx *create.Context) error {
 	selection, err := updraft.ScanProjectDir(ctx.Paths.Root)
 	if err != nil {
 		return fmt.Errorf("local project backup in %s is invalid: %w", ctx.Paths.Root, err)
@@ -35,7 +35,7 @@ func prepareLocalStarterData(ctx *create.Context) error {
 	ctx.Logger.Info("Using local project backup folder: " + ctx.Paths.Root)
 
 	ctx.StarterData = create.StarterData{
-		Mode:         starterDataModeLocal,
+		Mode:         ModeLocal,
 		DatabasePath: selection.Database,
 		PluginsPaths: append([]string(nil), selection.Plugins...),
 		UploadsPaths: append([]string(nil), selection.Uploads...),

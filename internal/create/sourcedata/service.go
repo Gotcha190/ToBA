@@ -1,4 +1,4 @@
-package steps
+package sourcedata
 
 import (
 	"fmt"
@@ -9,31 +9,12 @@ import (
 )
 
 const (
-	starterDataModeLocal  = "local"
-	starterDataModeRemote = "remote"
+	ModeLocal  = "local"
+	ModeRemote = "remote"
 )
 
-type PrepareStarterDataStep struct{}
-
-// NewPrepareStarterDataStep creates the pipeline step that selects and
-// prepares the starter data source for the run.
-//
-// Returns:
-// - a configured PrepareStarterDataStep instance
-func NewPrepareStarterDataStep() *PrepareStarterDataStep {
-	return &PrepareStarterDataStep{}
-}
-
-// Name returns the human-readable pipeline label for this step.
-//
-// Returns:
-// - the display name used by pipeline logging
-func (s *PrepareStarterDataStep) Name() string {
-	return "Prepare starter data"
-}
-
-// Run chooses between a local backup folder and the SSH fallback source and
-// populates ctx.StarterData accordingly.
+// Prepare chooses between a local backup folder and the SSH fallback source
+// and populates ctx.StarterData accordingly.
 //
 // Parameters:
 // - ctx: shared create context containing project paths, config, and runtime state
@@ -44,15 +25,15 @@ func (s *PrepareStarterDataStep) Name() string {
 // Side effects:
 // - mutates ctx.StarterData and ctx.UseExistingProjectDir
 // - reads the filesystem to detect an existing project directory
-func (s *PrepareStarterDataStep) Run(ctx *create.Context) error {
-	if ctx.StarterData.Mode == starterDataModeRemote {
-		return prepareRemoteStarterData(ctx)
+func Prepare(ctx *create.Context) error {
+	if ctx.StarterData.Mode == ModeRemote {
+		return prepareRemote(ctx)
 	}
 
 	rootInfo, err := os.Stat(ctx.Paths.Root)
 	switch {
 	case err == nil && rootInfo.IsDir():
-		return prepareLocalStarterData(ctx)
+		return prepareLocal(ctx)
 	case err == nil:
 		return fmt.Errorf("project path exists and is not a directory: %s", ctx.Paths.Root)
 	case !os.IsNotExist(err):
@@ -72,6 +53,6 @@ func (s *PrepareStarterDataStep) Run(ctx *create.Context) error {
 			}
 			return fmt.Errorf("SSH starter source is missing the remote WordPress root; fill in TOBA_REMOTE_WORDPRESS_ROOT in %s or pass --remote-wordpress-root", globalEnvPath)
 		}
-		return prepareRemoteStarterData(ctx)
+		return prepareRemote(ctx)
 	}
 }

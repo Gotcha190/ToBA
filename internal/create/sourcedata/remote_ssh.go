@@ -1,4 +1,4 @@
-package steps
+package sourcedata
 
 import (
 	"fmt"
@@ -11,20 +11,14 @@ import (
 	"github.com/gotcha190/toba/internal/create"
 )
 
-var (
-	sshTargetPattern = regexp.MustCompile(`^([^\s@]+@[^\s]+)\s+-p\s+([0-9]+)$`)
-)
+var sshTargetPattern = regexp.MustCompile(`^([^\s@]+@[^\s]+)\s+-p\s+([0-9]+)$`)
 
 type sshTarget struct {
 	UserHost string
 	Port     string
 }
 
-// parseSSHTarget validates the configured SSH target string and splits it into
-// user-host and port components.
-//
-// Parameters:
-// - raw: raw TOBA_SSH_TARGET value
+// parseSSHTarget validates the configured SSH target string and splits it into user-host and port components.
 //
 // Returns:
 // - the parsed sshTarget structure
@@ -46,20 +40,10 @@ func parseSSHTarget(raw string) (sshTarget, error) {
 	}, nil
 }
 
-// runSSHCommand executes a remote script through ssh and wraps connection
-// failures with starter-host context.
-//
-// Parameters:
-// - ctx: shared create context providing the command runner
-// - target: parsed SSH target
-// - remoteDir: remote directory in which the script should run
-// - script: shell fragment executed on the remote host
+// runSSHCommand executes a remote script through SSH.
 //
 // Returns:
 // - an error when the SSH command fails
-//
-// Side effects:
-// - runs `ssh` against the configured starter host
 func runSSHCommand(ctx *create.Context, target sshTarget, remoteDir string, script string) error {
 	if err := ctx.Runner.Run("", "ssh", "-p", target.Port, target.UserHost, remoteScript(remoteDir, script)); err != nil {
 		return fmt.Errorf("SSH command failed on %s:%s: %w", target.UserHost, target.Port, err)
@@ -68,14 +52,7 @@ func runSSHCommand(ctx *create.Context, target sshTarget, remoteDir string, scri
 	return nil
 }
 
-// captureSSHCommand executes a remote script through ssh and returns its
-// trimmed stdout output.
-//
-// Parameters:
-// - ctx: shared create context providing the command runner
-// - target: parsed SSH target
-// - remoteDir: remote directory in which the script should run
-// - script: shell fragment executed on the remote host
+// captureSSHCommand executes a remote script through SSH and returns trimmed stdout.
 //
 // Returns:
 // - the trimmed stdout output
@@ -89,16 +66,10 @@ func captureSSHCommand(ctx *create.Context, target sshTarget, remoteDir string, 
 	return strings.TrimSpace(output), nil
 }
 
-// formatSSHCommandError builds an SSH failure message and appends captured
-// command output when it is available.
-//
-// Parameters:
-// - target: parsed SSH target used for the command
-// - err: original command execution error
-// - output: captured stderr/stdout returned by the runner
+// formatSSHCommandError builds an SSH failure message with optional captured output.
 //
 // Returns:
-// - an error describing the failed SSH command, including remote output when present
+// - the formatted SSH error
 func formatSSHCommandError(target sshTarget, err error, output string) error {
 	detail := strings.TrimSpace(output)
 	if detail == "" {
@@ -110,18 +81,12 @@ func formatSSHCommandError(target sshTarget, err error, output string) error {
 
 // copyRemoteFile downloads one file from the starter host into localPath.
 //
-// Parameters:
-// - ctx: shared create context providing the command runner
-// - target: parsed SSH target
-// - remotePath: file path on the remote host
-// - localPath: destination path on the local machine
-//
 // Returns:
-// - an error when the parent directory cannot be created or the download fails
+// - an error when the local directory cannot be created or the download fails
 //
 // Side effects:
 // - creates the local parent directory when needed
-// - runs `scp` against the configured starter host
+// - removes the partial local file if scp fails
 func copyRemoteFile(ctx *create.Context, target sshTarget, remotePath string, localPath string) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 		return err
@@ -135,15 +100,10 @@ func copyRemoteFile(ctx *create.Context, target sshTarget, remotePath string, lo
 	return nil
 }
 
-// remoteScript builds the remote shell snippet that first changes into
-// remoteDir before running script.
-//
-// Parameters:
-// - remoteDir: remote working directory
-// - script: remote shell fragment to execute
+// remoteScript prepends an optional remote directory change before the given shell fragment.
 //
 // Returns:
-// - a combined remote shell command string
+// - the combined remote shell command string
 func remoteScript(remoteDir string, script string) string {
 	if strings.TrimSpace(remoteDir) == "" {
 		return script
@@ -152,14 +112,10 @@ func remoteScript(remoteDir string, script string) string {
 	return "cd " + shellQuote(remoteDir) + " && " + script
 }
 
-// shellQuote escapes a string for safe use inside a single-quoted remote shell
-// command.
-//
-// Parameters:
-// - value: raw string to quote
+// shellQuote escapes a string for safe use inside a single-quoted shell fragment.
 //
 // Returns:
-// - a safely quoted shell fragment
+// - the safely quoted shell string
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
