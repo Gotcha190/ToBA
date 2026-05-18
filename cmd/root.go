@@ -78,8 +78,28 @@ func Execute() {
 //
 // Usage:
 //
-//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com' --dry-run
+//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com' --dry-run --sequential
 func runCreate(args []string) error {
+	opts, err := parseCreateOptions(args)
+	if err != nil {
+		return err
+	}
+
+	return cli.RunCreate(opts)
+}
+
+// parseCreateOptions parses raw `toba create` arguments into CLI create options.
+//
+// Parameters:
+// - args: raw command-line arguments after the `create` subcommand
+//
+// Returns:
+// - parsed create options
+// - an error when flag parsing fails or unexpected positional arguments remain
+//
+// Side effects:
+// - configures a dedicated flag set that writes parsing errors to stderr
+func parseCreateOptions(args []string) (cli.CreateOptions, error) {
 	fs := flag.NewFlagSet("create", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -89,8 +109,9 @@ func runCreate(args []string) error {
 	fs.StringVar(&opts.SSHTarget, "ssh-target", "", "SSH target in format 'user@host -p port'")
 	fs.StringVar(&opts.RemoteWordPressRoot, "remote-wordpress-root", "", "Remote WordPress root used by SSH starter data")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "Print planned actions without writing files")
+	fs.BoolVar(&opts.Sequential, "sequential", false, "Run create pipeline without parallel node scheduling")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--sequential]")
 	}
 
 	projectName := ""
@@ -100,7 +121,7 @@ func runCreate(args []string) error {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return err
+		return cli.CreateOptions{}, err
 	}
 
 	remaining := fs.Args()
@@ -110,11 +131,11 @@ func runCreate(args []string) error {
 	}
 
 	if len(remaining) > 0 {
-		return fmt.Errorf("unexpected arguments: %v", remaining)
+		return cli.CreateOptions{}, fmt.Errorf("unexpected arguments: %v", remaining)
 	}
 
 	opts.Name = projectName
-	return cli.RunCreate(opts)
+	return opts, nil
 }
 
 // runConfig validates arguments for the `toba config` command and runs the

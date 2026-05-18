@@ -32,10 +32,11 @@ type StepTimingRecorder interface {
 }
 
 type Pipeline struct {
-	Steps    []Step
-	Stages   []Stage
-	Nodes    []StepNode
-	Recorder StepTimingRecorder
+	Steps      []Step
+	Stages     []Stage
+	Nodes      []StepNode
+	Sequential bool
+	Recorder   StepTimingRecorder
 }
 
 // Run executes each pipeline step in order and logs coded errors with their
@@ -62,6 +63,9 @@ func (p *Pipeline) Run(ctx *Context) error {
 	}()
 
 	if len(p.Nodes) > 0 {
+		if p.Sequential {
+			return p.runDependencyGraphSequential(ctx)
+		}
 		return p.runDependencyGraph(ctx)
 	}
 

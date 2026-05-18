@@ -631,7 +631,7 @@ func TestBuildCreatePipelineOverlapsRemoteBootstrapWhenProjectDirDoesNotExist(t 
 		StarterRepo:         testStarterRepo,
 		SSHTarget:           "user@192.168.0.1 -p 22",
 		RemoteWordPressRoot: testRemoteWordPressRoot,
-	})
+	}, false)
 
 	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"collect-config"})
 	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir"})
@@ -652,11 +652,70 @@ func TestBuildCreatePipelineKeepsPrepareStarterDataAheadOfProjectDirForExistingP
 		StarterRepo:         testStarterRepo,
 		SSHTarget:           "user@192.168.0.1 -p 22",
 		RemoteWordPressRoot: testRemoteWordPressRoot,
-	})
+	}, false)
 
 	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"prepare-starter-data"})
 	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir", "prepare-starter-data"})
 	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
+}
+
+func TestBuildCreatePipelineSetsSequentialModeWhenRequested(t *testing.T) {
+	baseDir := t.TempDir()
+
+	pipeline := buildCreatePipeline(baseDir, create.ProjectConfig{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	}, true)
+
+	if !pipeline.Sequential {
+		t.Fatal("expected sequential pipeline mode to be enabled")
+	}
+}
+
+func TestBuildCreatePipelineLeavesSequentialDisabledByDefault(t *testing.T) {
+	baseDir := t.TempDir()
+
+	pipeline := buildCreatePipeline(baseDir, create.ProjectConfig{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	}, false)
+
+	if pipeline.Sequential {
+		t.Fatal("expected sequential pipeline mode to be disabled")
+	}
+}
+
+func TestRunCreateWithIOLogsSequentialModeWhenEnabled(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{}
+	output := &strings.Builder{}
+
+	err := runCreateWithIO(
+		CreateOptions{
+			Name:                "demo",
+			StarterRepo:         testStarterRepo,
+			SSHTarget:           "user@192.168.0.1 -p 22",
+			RemoteWordPressRoot: testRemoteWordPressRoot,
+			Sequential:          true,
+		},
+		runner,
+		strings.NewReader("n\n"),
+		output,
+	)
+	if err != nil {
+		t.Fatalf("runCreateWithIO returned error: %v", err)
+	}
+
+	if !strings.Contains(output.String(), "Sequential create mode enabled") {
+		t.Fatalf("expected sequential mode log, got %q", output.String())
+	}
 }
 
 func assertProjectSkeleton(t *testing.T, paths create.ProjectPaths) {
