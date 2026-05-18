@@ -2,6 +2,7 @@ package create
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -317,6 +318,110 @@ func TestPipelineDependencyGraphWaitsForRunningNodesAfterError(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for pipeline completion")
+	}
+}
+
+func TestPipelineDependencyGraphSequentialRunsNodesInDeclaredOrder(t *testing.T) {
+	logger := &recordingLogger{}
+	recorder := &recordingTimingRecorder{}
+	var executed []string
+
+	pipeline := Pipeline{
+		Sequential: true,
+		Recorder:   recorder,
+		Nodes: []StepNode{
+			{ID: "collect-config", Step: pipelineTestStep{name: "collect-config", hit: &executed}},
+			{ID: "project-dir", Step: pipelineTestStep{name: "project-dir", hit: &executed}, DependsOn: []string{"collect-config"}},
+			{ID: "install-wordpress", Step: pipelineTestStep{name: "install-wordpress", hit: &executed}, DependsOn: []string{"project-dir"}},
+		},
+	}
+
+	if err := pipeline.Run(&Context{Logger: logger}); err != nil {
+		t.Fatalf("unexpected pipeline error: %v", err)
+	}
+
+	expected := []string{"collect-config", "project-dir", "install-wordpress"}
+	if len(executed) != len(expected) {
+		t.Fatalf("expected %d executed nodes, got %d: %v", len(expected), len(executed), executed)
+	}
+	for index, name := range expected {
+		if executed[index] != name {
+			t.Fatalf("expected node %d to be %s, got %s", index, name, executed[index])
+		}
+	}
+	if len(logger.successes) != len(expected) {
+		t.Fatalf("expected %d success logs, got %v", len(expected), logger.successes)
+	}
+	if len(recorder.timings) != len(expected) {
+		t.Fatalf("expected %d timings, got %d", len(expected), len(recorder.timings))
+	}
+}
+
+func TestPipelineDependencyGraphSequentialStopsOnFirstError(t *testing.T) {
+	expectedErr := errors.New("boom")
+	logger := &recordingLogger{}
+	recorder := &recordingTimingRecorder{}
+	var executed []string
+
+	pipeline := Pipeline{
+		Sequential: true,
+		Recorder:   recorder,
+		Nodes: []StepNode{
+			{ID: "collect-config", Step: pipelineTestStep{name: "collect-config", hit: &executed}},
+			{ID: "project-dir", Step: pipelineTestStep{name: "project-dir", err: expectedErr, hit: &executed}, DependsOn: []string{"collect-config"}},
+			{ID: "install-wordpress", Step: pipelineTestStep{name: "install-wordpress", hit: &executed}, DependsOn: []string{"project-dir"}},
+		},
+	}
+
+	err := pipeline.Run(&Context{Logger: logger})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected %v, got %v", expectedErr, err)
+	}
+
+	expected := []string{"collect-config", "project-dir"}
+	if len(executed) != len(expected) {
+		t.Fatalf("expected %d executed nodes, got %d: %v", len(expected), len(executed), executed)
+	}
+	for index, name := range expected {
+		if executed[index] != name {
+			t.Fatalf("expected node %d to be %s, got %s", index, name, executed[index])
+		}
+	}
+	if len(logger.successes) != 1 || logger.successes[0] != "collect-config" {
+		t.Fatalf("unexpected success logs: %v", logger.successes)
+	}
+	if len(logger.errors) != 1 {
+		t.Fatalf("expected one error log, got %v", logger.errors)
+	}
+	if len(recorder.timings) != 2 {
+		t.Fatalf("expected timings for executed nodes only, got %d", len(recorder.timings))
+	}
+}
+
+func TestPipelineDependencyGraphSequentialRejectsNodeBeforeDependency(t *testing.T) {
+	logger := &recordingLogger{}
+	var executed []string
+
+	pipeline := Pipeline{
+		Sequential: true,
+		Nodes: []StepNode{
+			{ID: "install-wordpress", Step: pipelineTestStep{name: "install-wordpress", hit: &executed}, DependsOn: []string{"project-dir"}},
+			{ID: "project-dir", Step: pipelineTestStep{name: "project-dir", hit: &executed}},
+		},
+	}
+
+	err := pipeline.Run(&Context{Logger: logger})
+	if err == nil {
+		t.Fatal("expected invalid sequential ordering error")
+	}
+	if !strings.Contains(err.Error(), "appears before dependency") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(executed) != 0 {
+		t.Fatalf("expected no executed nodes, got %v", executed)
+	}
+	if len(logger.successes) != 0 || len(logger.errors) != 0 {
+		t.Fatalf("expected no success or error logs, got successes=%v errors=%v", logger.successes, logger.errors)
 	}
 }
 

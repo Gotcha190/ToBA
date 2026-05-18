@@ -13,10 +13,11 @@ import (
 // Parameters:
 // - baseDir: directory in which the project will be created
 // - config: project configuration used to decide safe parallelization
+// - sequential: whether to disable parallel scheduling for ready nodes
 //
 // Returns:
 // - the configured create pipeline
-func buildCreatePipeline(baseDir string, config create.ProjectConfig) create.Pipeline {
+func buildCreatePipeline(baseDir string, config create.ProjectConfig, sequential bool) create.Pipeline {
 	remoteBootstrapParallel := canParallelizeRemoteBootstrap(baseDir, config)
 
 	prepareStarterDataStep := create.Step(steps.NewPrepareStarterDataStep())
@@ -35,6 +36,7 @@ func buildCreatePipeline(baseDir string, config create.ProjectConfig) create.Pip
 	}
 
 	return create.Pipeline{
+		Sequential: sequential,
 		Nodes: []create.StepNode{
 			{ID: "collect-config", Step: steps.NewCollectConfigStep()},
 			{ID: "prepare-starter-data", Step: prepareStarterDataStep, DependsOn: prepareStarterDataDeps},

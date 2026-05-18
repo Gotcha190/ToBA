@@ -32,7 +32,7 @@ Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
 - `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
 
-Od wersji `1.2.1` przepływ `create` wykonuje niezależne kroki równolegle tam, gdzie jest to bezpieczne. Dotyczy to między innymi przygotowania danych przez SSH, pobierania zdalnych artefaktów, przywracania wielu archiwów oraz instalacji zależności theme, przy zachowaniu bezpieczniejszych zależności przed pierwszymi operacjami WP-CLI na zaimportowanej bazie.
+Od wersji `1.2.2` przepływ `create` wykonuje niezależne kroki równolegle tam, gdzie jest to bezpieczne. Dotyczy to między innymi przygotowania danych przez SSH, pobierania zdalnych artefaktów, przywracania wielu archiwów oraz instalacji zależności theme, przy zachowaniu bezpieczniejszych zależności przed pierwszymi operacjami WP-CLI na zaimportowanej bazie.
 
 ## Wymagania
 
@@ -83,7 +83,7 @@ go install .
 Wersjonowanie binarki:
 
 - release build pokazuje `toba version: <version>` ustawione podczas wydania
-- lokalny build z checkoutu repo pokazuje `toba version: 1.2.1 dev`
+- lokalny build z checkoutu repo pokazuje `toba version: 1.2.2 dev`
 
 ## Szybki start
 
@@ -158,7 +158,7 @@ www/example.com
 
 ```bash
 toba config
-toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run]
+toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--sequential]
 toba doctor
 toba version
 ```
@@ -190,6 +190,15 @@ Pipeline jest grafem zależności, więc niezależne kroki nie muszą czekać na
 - theme build może wystartować po dostępności Lando, theme i plugins,
 - import bazy i pierwszy `wp search-replace` czekają na wymagane przywrócenie pluginów i innych zależnych plików,
 - końcowe kroki cache/rewrite uruchamiają się dopiero po wymaganych importach i aktywacji theme.
+
+Do debugowania i porównań zachowania można uruchomić:
+
+```bash
+toba create demo --sequential
+```
+
+Ta flaga zachowuje ten sam workflow i te same zależności, ale wykonuje gotowe
+node'y jeden po drugim zamiast równolegle.
 
 ## Tryby danych startowych
 

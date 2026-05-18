@@ -17,6 +17,7 @@ type CreateOptions struct {
 	SSHTarget           string
 	RemoteWordPressRoot string
 	DryRun              bool
+	Sequential          bool
 }
 
 // RunCreate runs the full ToBA project creation pipeline.
@@ -34,7 +35,7 @@ type CreateOptions struct {
 //
 // Usage:
 //
-//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
+//	toba create demo --php=8.4 --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com' --sequential
 func RunCreate(opts CreateOptions) error {
 	return runCreateWithIO(opts, create.ExecRunner{}, os.Stdin, os.Stdout)
 }
@@ -120,7 +121,10 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 		}
 	}()
 
-	pipeline := buildCreatePipeline(cwd, config)
+	pipeline := buildCreatePipeline(cwd, config, opts.Sequential)
+	if opts.Sequential {
+		logger.Info("Sequential create mode enabled; pipeline nodes will run one at a time")
+	}
 
 	err = pipeline.Run(ctx)
 	if err != nil {

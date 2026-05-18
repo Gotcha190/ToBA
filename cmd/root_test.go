@@ -109,3 +109,16 @@ func TestRunConfigRejectsLegacyInitArgument(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestParseCreateOptionsSetsSequentialFlag(t *testing.T) {
+	opts, err := parseCreateOptions([]string{"demo", "--sequential"})
+	if err != nil {
+		t.Fatalf("parseCreateOptions returned error: %v", err)
+	}
+	if opts.Name != "demo" {
+		t.Fatalf("expected project name demo, got %q", opts.Name)
+	}
+	if !opts.Sequential {
+		t.Fatal("expected sequential flag to be enabled")
+	}
+}
