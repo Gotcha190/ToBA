@@ -32,7 +32,7 @@ Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
 - `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
 
-Od wersji `1.2.2` przepływ `create` wykonuje niezależne kroki równolegle tam, gdzie jest to bezpieczne. Dotyczy to między innymi przygotowania danych przez SSH, pobierania zdalnych artefaktów, przywracania wielu archiwów oraz instalacji zależności theme, przy zachowaniu bezpieczniejszych zależności przed pierwszymi operacjami WP-CLI na zaimportowanej bazie.
+Od wersji `1.2.3` przepływ `create` wykonuje niezależne kroki równolegle tam, gdzie jest to bezpieczne. Dotyczy to między innymi przygotowania danych przez SSH, pobierania zdalnych artefaktów, przywracania wielu archiwów oraz instalacji zależności theme, przy zachowaniu bezpieczniejszych zależności przed pierwszymi operacjami WP-CLI na zaimportowanej bazie.
 
 ## Wymagania
 
@@ -83,7 +83,7 @@ go install .
 Wersjonowanie binarki:
 
 - release build pokazuje `toba version: <version>` ustawione podczas wydania
-- lokalny build z checkoutu repo pokazuje `toba version: 1.2.2 dev`
+- lokalny build z checkoutu repo pokazuje `toba version: 1.2.3 dev`
 
 ## Szybki start
 
