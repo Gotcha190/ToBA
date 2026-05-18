@@ -27,17 +27,12 @@ jobs:
       - name: Run tests
         run: go test ./...
 
-      - name: Generate release notes
-        run: |
-          previous_tag="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^")"
-          bash ./scripts/generate-release-notes.sh "${GITHUB_REF_NAME}" "${previous_tag}" > /tmp/release-notes.md
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --release-notes /tmp/release-notes.md
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
