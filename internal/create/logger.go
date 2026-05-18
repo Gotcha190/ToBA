@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 type Logger interface {
@@ -12,6 +13,7 @@ type Logger interface {
 	Prompt(msg string)
 	Warning(msg string)
 	Success(msg string)
+	SuccessDuration(msg string, duration time.Duration)
 	Error(msg string)
 	ErrorCode(code string, msg string)
 }
@@ -65,6 +67,18 @@ func (l ConsoleLogger) Prompt(msg string) {
 // - null
 func (l ConsoleLogger) Success(msg string) {
 	l.println("[OK]", msg)
+}
+
+// SuccessDuration writes a success message with compact timing metadata.
+//
+// Parameters:
+// - msg: success message to display
+// - duration: elapsed time to append to the success message
+//
+// Returns:
+// - null
+func (l ConsoleLogger) SuccessDuration(msg string, duration time.Duration) {
+	l.Success(msg + " | " + FormatDurationCompact(duration))
 }
 
 // Warning writes a warning message to the configured output.

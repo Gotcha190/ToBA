@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gotcha190/toba/internal/create"
 )
@@ -17,12 +18,13 @@ type starterTestLogger struct {
 	warnings []string
 }
 
-func (l *starterTestLogger) Step(string)              {}
-func (l *starterTestLogger) Info(msg string)          { l.infos = append(l.infos, msg) }
-func (l *starterTestLogger) Prompt(string)            {}
-func (l *starterTestLogger) Success(string)           {}
-func (l *starterTestLogger) Error(string)             {}
-func (l *starterTestLogger) ErrorCode(string, string) {}
+func (l *starterTestLogger) Step(string)                           {}
+func (l *starterTestLogger) Info(msg string)                       { l.infos = append(l.infos, msg) }
+func (l *starterTestLogger) Prompt(string)                         {}
+func (l *starterTestLogger) Success(string)                        {}
+func (l *starterTestLogger) SuccessDuration(string, time.Duration) {}
+func (l *starterTestLogger) Error(string)                          {}
+func (l *starterTestLogger) ErrorCode(string, string)              {}
 func (l *starterTestLogger) Warning(msg string) {
 	l.warnings = append(l.warnings, msg)
 }

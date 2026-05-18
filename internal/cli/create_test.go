@@ -424,6 +424,9 @@ func TestRunCreateNormalizesNameAndPrintsFinalSiteURL(t *testing.T) {
 	if !strings.Contains(output.String(), "Project ready: https://test.lndo.site") {
 		t.Fatalf("expected final site URL in output, got %q", output.String())
 	}
+	if !strings.Contains(output.String(), "[INFO] Total create time: ") {
+		t.Fatalf("expected total create time in output, got %q", output.String())
+	}
 }
 
 func TestRunCreateDoesNotRunAcornOptimizeClearForSSHStarter(t *testing.T) {
@@ -501,6 +504,9 @@ func TestRunCreateCleansUpFailedInstallWhenConfirmed(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "Delete failed installation") {
 		t.Fatalf("expected cleanup prompt, got: %s", output.String())
+	}
+	if strings.Contains(output.String(), "Total create time") {
+		t.Fatalf("expected no total create time on failure, got: %s", output.String())
 	}
 }
 
@@ -715,6 +721,9 @@ func TestRunCreateWithIOLogsSequentialModeWhenEnabled(t *testing.T) {
 
 	if !strings.Contains(output.String(), "Sequential create mode enabled") {
 		t.Fatalf("expected sequential mode log, got %q", output.String())
+	}
+	if !strings.Contains(output.String(), "[INFO] Total create time: ") {
+		t.Fatalf("expected total create time in output, got %q", output.String())
 	}
 }
 

@@ -2,11 +2,14 @@ package create
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+var compactDurationPattern = regexp.MustCompile(`^.+ \| ([0-9]+ms|[0-9]+\.[0-9]{2}s|[0-9]+m[0-9]{2}s)$`)
 
 type recordingLogger struct {
 	steps     []string
@@ -30,6 +33,10 @@ func (l *recordingLogger) Warning(msg string) {}
 
 func (l *recordingLogger) Success(msg string) {
 	l.successes = append(l.successes, msg)
+}
+
+func (l *recordingLogger) SuccessDuration(msg string, duration time.Duration) {
+	l.successes = append(l.successes, msg+" | "+FormatDurationCompact(duration))
 }
 
 func (l *recordingLogger) Error(msg string) {
@@ -111,7 +118,7 @@ func TestPipelineSequentialStepsRemainBackwardCompatible(t *testing.T) {
 		t.Fatalf("unexpected executed steps: %v", executed)
 	}
 
-	if len(logger.successes) != 1 || logger.successes[0] != "step-1" {
+	if len(logger.successes) != 1 || !isTimedSuccess(logger.successes[0], "step-1") {
 		t.Fatalf("unexpected success logs: %v", logger.successes)
 	}
 	if len(logger.errors) != 1 {
@@ -201,7 +208,7 @@ func TestPipelineParallelStageWaitsForAllStepsAndReturnsFirstStageError(t *testi
 		t.Fatal("timed out waiting for pipeline completion")
 	}
 
-	if len(logger.successes) != 1 || logger.successes[0] != "step-2" {
+	if len(logger.successes) != 1 || !isTimedSuccess(logger.successes[0], "step-2") {
 		t.Fatalf("unexpected success logs: %v", logger.successes)
 	}
 	if len(logger.errors) != 2 {
@@ -321,6 +328,32 @@ func TestPipelineDependencyGraphWaitsForRunningNodesAfterError(t *testing.T) {
 	}
 }
 
+func TestPipelineDependencyGraphLogsTimedSuccess(t *testing.T) {
+	logger := &recordingLogger{}
+	var executed []string
+
+	pipeline := Pipeline{
+		Nodes: []StepNode{
+			{ID: "collect-config", Step: pipelineTestStep{name: "collect-config", hit: &executed}},
+			{ID: "project-dir", Step: pipelineTestStep{name: "project-dir", hit: &executed}, DependsOn: []string{"collect-config"}},
+		},
+	}
+
+	if err := pipeline.Run(&Context{Logger: logger}); err != nil {
+		t.Fatalf("unexpected pipeline error: %v", err)
+	}
+
+	expected := []string{"collect-config", "project-dir"}
+	if len(logger.successes) != len(expected) {
+		t.Fatalf("expected %d success logs, got %v", len(expected), logger.successes)
+	}
+	for index, name := range expected {
+		if !isTimedSuccess(logger.successes[index], name) {
+			t.Fatalf("unexpected success log %d: %q", index, logger.successes[index])
+		}
+	}
+}
+
 func TestPipelineDependencyGraphSequentialRunsNodesInDeclaredOrder(t *testing.T) {
 	logger := &recordingLogger{}
 	recorder := &recordingTimingRecorder{}
@@ -344,13 +377,16 @@ func TestPipelineDependencyGraphSequentialRunsNodesInDeclaredOrder(t *testing.T)
 	if len(executed) != len(expected) {
 		t.Fatalf("expected %d executed nodes, got %d: %v", len(expected), len(executed), executed)
 	}
+	if len(logger.successes) != len(expected) {
+		t.Fatalf("expected %d success logs, got %v", len(expected), logger.successes)
+	}
 	for index, name := range expected {
 		if executed[index] != name {
 			t.Fatalf("expected node %d to be %s, got %s", index, name, executed[index])
 		}
-	}
-	if len(logger.successes) != len(expected) {
-		t.Fatalf("expected %d success logs, got %v", len(expected), logger.successes)
+		if !isTimedSuccess(logger.successes[index], name) {
+			t.Fatalf("unexpected success log %d: %q", index, logger.successes[index])
+		}
 	}
 	if len(recorder.timings) != len(expected) {
 		t.Fatalf("expected %d timings, got %d", len(expected), len(recorder.timings))
@@ -387,7 +423,7 @@ func TestPipelineDependencyGraphSequentialStopsOnFirstError(t *testing.T) {
 			t.Fatalf("expected node %d to be %s, got %s", index, name, executed[index])
 		}
 	}
-	if len(logger.successes) != 1 || logger.successes[0] != "collect-config" {
+	if len(logger.successes) != 1 || !isTimedSuccess(logger.successes[0], "collect-config") {
 		t.Fatalf("unexpected success logs: %v", logger.successes)
 	}
 	if len(logger.errors) != 1 {
@@ -451,11 +487,14 @@ type concurrencyProbeLogger struct {
 	mu            sync.Mutex
 }
 
-func (l *concurrencyProbeLogger) Step(msg string)                   { l.probe() }
-func (l *concurrencyProbeLogger) Info(msg string)                   { l.probe() }
-func (l *concurrencyProbeLogger) Prompt(msg string)                 { l.probe() }
-func (l *concurrencyProbeLogger) Warning(msg string)                { l.probe() }
-func (l *concurrencyProbeLogger) Success(msg string)                { l.probe() }
+func (l *concurrencyProbeLogger) Step(msg string)    { l.probe() }
+func (l *concurrencyProbeLogger) Info(msg string)    { l.probe() }
+func (l *concurrencyProbeLogger) Prompt(msg string)  { l.probe() }
+func (l *concurrencyProbeLogger) Warning(msg string) { l.probe() }
+func (l *concurrencyProbeLogger) Success(msg string) { l.probe() }
+func (l *concurrencyProbeLogger) SuccessDuration(msg string, duration time.Duration) {
+	l.probe()
+}
 func (l *concurrencyProbeLogger) Error(msg string)                  { l.probe() }
 func (l *concurrencyProbeLogger) ErrorCode(code string, msg string) { l.probe() }
 
@@ -472,4 +511,8 @@ func (l *concurrencyProbeLogger) probe() {
 	l.mu.Lock()
 	l.active--
 	l.mu.Unlock()
+}
+
+func isTimedSuccess(got string, name string) bool {
+	return strings.HasPrefix(got, name+" | ") && compactDurationPattern.MatchString(got)
 }

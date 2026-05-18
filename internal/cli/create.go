@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gotcha190/toba/internal/create"
 	"github.com/gotcha190/toba/internal/wordpress"
@@ -75,6 +76,7 @@ func runCreateWithRunner(opts CreateOptions, runner create.CommandRunner) error 
 // - may execute local shell commands and remote SSH commands through the runner
 // - removes the temporary starter-data directory on exit
 func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.Reader, output io.Writer) error {
+	startedAt := time.Now()
 	logger := create.NewConsoleLogger(output)
 
 	config, envPath, _, err := create.ResolveEnvConfig()
@@ -139,6 +141,7 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 	}
 
 	logger.Success("Project ready: " + siteURL)
+	logger.Info("Total create time: " + create.FormatDurationCompact(time.Since(startedAt)))
 
 	return nil
 }

@@ -54,7 +54,7 @@ func (p *Pipeline) runSequentialStage(ctx *Context, stage Stage) error {
 			return err
 		}
 
-		ctx.Logger.Success(step.Name())
+		ctx.Logger.SuccessDuration(step.Name(), timing.Duration)
 	}
 
 	return nil
@@ -110,7 +110,7 @@ func (p *Pipeline) runParallelStage(ctx *Context, stage Stage) error {
 			continue
 		}
 
-		ctx.Logger.Success(step.Name())
+		ctx.Logger.SuccessDuration(step.Name(), results[index].timing.Duration)
 	}
 
 	return firstErr

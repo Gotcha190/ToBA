@@ -12,6 +12,11 @@ type graphNodeState struct {
 	dependents []string
 }
 
+// buildDependencyGraphStates validates node definitions and links dependents.
+//
+// Returns:
+// - graph state keyed by resolved node ID
+// - an error when a node is invalid or a dependency is unknown
 func (p *Pipeline) buildDependencyGraphStates() (map[string]*graphNodeState, error) {
 	states := make(map[string]*graphNodeState, len(p.Nodes))
 	for index, node := range p.Nodes {
@@ -138,7 +143,7 @@ func (p *Pipeline) runDependencyGraph(ctx *Context) error {
 			continue
 		}
 
-		ctx.Logger.Success(state.def.Step.Name())
+		ctx.Logger.SuccessDuration(state.def.Step.Name(), result.timing.Duration)
 
 		if stopScheduling {
 			continue
@@ -209,7 +214,7 @@ func (p *Pipeline) runDependencyGraphSequential(ctx *Context) error {
 			return stepErr
 		}
 
-		ctx.Logger.Success(state.def.Step.Name())
+		ctx.Logger.SuccessDuration(state.def.Step.Name(), timing.Duration)
 		completed[state.def.ID] = struct{}{}
 	}
 

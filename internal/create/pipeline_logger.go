@@ -1,6 +1,9 @@
 package create
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type synchronizedLogger struct {
 	next Logger
@@ -103,6 +106,23 @@ func (l *synchronizedLogger) Warning(msg string) {
 func (l *synchronizedLogger) Success(msg string) {
 	l.withLock(func() {
 		l.next.Success(msg)
+	})
+}
+
+// SuccessDuration writes a synchronized success message with timing metadata.
+//
+// Parameters:
+// - msg: success message to display
+// - duration: elapsed time to append to the success message
+//
+// Returns:
+// - null
+//
+// Side effects:
+// - forwards the message to the wrapped logger
+func (l *synchronizedLogger) SuccessDuration(msg string, duration time.Duration) {
+	l.withLock(func() {
+		l.next.SuccessDuration(msg, duration)
 	})
 }
 
