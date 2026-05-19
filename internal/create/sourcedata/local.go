@@ -20,6 +20,10 @@ import (
 // - marks the run as using an existing project directory
 // - populates ctx.StarterData with local backup paths
 func prepareLocal(ctx *create.Context) error {
+	if ctx.Config.NoUploads {
+		return fmt.Errorf("--no-uploads is only supported with SSH starter data; local backup mode still requires uploads archives")
+	}
+
 	selection, err := updraft.ScanProjectDir(ctx.Paths.Root)
 	if err != nil {
 		return fmt.Errorf("local project backup in %s is invalid: %w", ctx.Paths.Root, err)

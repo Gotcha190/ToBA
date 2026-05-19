@@ -202,6 +202,71 @@ func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testin
 	assertStarterCommandContains(t, runner.commands, "ssh", "cat ")
 }
 
+func TestPrepareStarterDataNoUploadsSkipsRemoteUploads(t *testing.T) {
+	logger := &starterTestLogger{}
+	runner := &starterTestRunner{captureOutput: "https://starter.example.test\n"}
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
+		NoUploads:           true,
+	}, logger, runner)
+
+	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
+		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
+	}
+
+	if len(ctx.StarterData.UploadsPaths) != 0 {
+		t.Fatalf("expected no uploads paths, got %#v", ctx.StarterData.UploadsPaths)
+	}
+	if !containsString(logger.infos, "Skipping starter uploads download; missing local uploads will fall back to https://starter.example.test") {
+		t.Fatalf("expected skip uploads log, got %#v", logger.infos)
+	}
+	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 option get home >")
+	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 db export")
+	assertStarterCommandContains(t, runner.commands, "ssh", "(cd wp-content && zip -r -q ../")
+	assertStarterCommandNotContains(t, runner.commands, "ssh", "pid_uploads")
+	assertStarterCommandNotContains(t, runner.commands, "ssh", "-i 'uploads/*'")
+	if target := findStarterLocalTarget(runner.commands, "-uploads.zip"); target != "" {
+		t.Fatalf("expected no uploads scp target, got %q in %#v", target, runner.commands)
+	}
+}
+
+func TestPrepareStarterDataDryRunNoUploadsOmitsFakeUploadsPath(t *testing.T) {
+	logger := &starterTestLogger{}
+	ctx := create.NewContext(t.TempDir(), create.ProjectConfig{
+		Name:                "demo",
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: "www/example.com",
+		DryRun:              true,
+		NoUploads:           true,
+	}, logger, &starterTestRunner{})
+
+	if err := NewPrepareStarterDataStep().Run(ctx); err != nil {
+		t.Fatalf("PrepareStarterDataStep returned error: %v", err)
+	}
+	if len(ctx.StarterData.UploadsPaths) != 0 {
+		t.Fatalf("expected no fake uploads path, got %#v", ctx.StarterData.UploadsPaths)
+	}
+	if !containsString(logger.infos, "Would skip remote uploads download and configure .htaccess fallback") {
+		t.Fatalf("expected dry-run skip log, got %#v", logger.infos)
+	}
+}
+
+func TestPrepareStarterDataNoUploadsRejectsLocalMode(t *testing.T) {
+	baseDir := t.TempDir()
+	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo", NoUploads: true}, &starterTestLogger{}, &starterTestRunner{})
+	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.gz"), "db")
+
+	err := NewPrepareStarterDataStep().Run(ctx)
+	if err == nil {
+		t.Fatal("expected local no-uploads error")
+	}
+	if !strings.Contains(err.Error(), "--no-uploads is only supported with SSH starter data") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestPrepareStarterDataParsesLastRemoteOutputLineAsSourceURL(t *testing.T) {
 	logger := &starterTestLogger{}
 	runner := &starterTestRunner{
@@ -431,6 +496,19 @@ func assertStarterCommandContains(t *testing.T, commands []starterRecordedComman
 	}
 
 	t.Fatalf("expected %s command containing %q, got %#v", cmd, fragment, commands)
+}
+
+func assertStarterCommandNotContains(t *testing.T, commands []starterRecordedCommand, cmd string, fragment string) {
+	t.Helper()
+
+	for _, command := range commands {
+		if command.cmd != cmd || len(command.args) == 0 {
+			continue
+		}
+		if strings.Contains(command.args[len(command.args)-1], fragment) {
+			t.Fatalf("did not expect %s command containing %q, got %#v", cmd, fragment, commands)
+		}
+	}
 }
 
 func writeStarterProjectFile(t *testing.T, path string, content string) {

@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bytes"
+	"flag"
 	"io"
 	"os"
 	"strings"
@@ -120,5 +122,46 @@ func TestParseCreateOptionsSetsSequentialFlag(t *testing.T) {
 	}
 	if !opts.Sequential {
 		t.Fatal("expected sequential flag to be enabled")
+	}
+}
+
+func TestParseCreateOptionsSetsNoUploadsFlag(t *testing.T) {
+	opts, err := parseCreateOptions([]string{"demo", "--no-uploads"})
+	if err != nil {
+		t.Fatalf("parseCreateOptions returned error: %v", err)
+	}
+	if opts.Name != "demo" {
+		t.Fatalf("expected project name demo, got %q", opts.Name)
+	}
+	if !opts.NoUploads {
+		t.Fatal("expected no-uploads flag to be enabled")
+	}
+}
+
+func TestCreateUsageMentionsNoUploadsFlag(t *testing.T) {
+	stderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	defer func() {
+		_ = reader.Close()
+	}()
+
+	os.Stderr = writer
+	_, parseErr := parseCreateOptions([]string{"--help"})
+	_ = writer.Close()
+	os.Stderr = stderr
+
+	if parseErr != flag.ErrHelp {
+		t.Fatalf("expected flag.ErrHelp, got %v", parseErr)
+	}
+
+	var output bytes.Buffer
+	if _, err := io.Copy(&output, reader); err != nil {
+		t.Fatalf("failed to read usage output: %v", err)
+	}
+	if !strings.Contains(output.String(), "--no-uploads") {
+		t.Fatalf("expected create usage to mention --no-uploads, got %q", output.String())
 	}
 }

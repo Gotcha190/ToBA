@@ -30,3 +30,14 @@ func TestProjectConfigNormalizeRejectsSpacesInName(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestProjectConfigNormalizePreservesNoUploads(t *testing.T) {
+	config := ProjectConfig{Name: "demo", NoUploads: true}
+
+	if err := config.Normalize(); err != nil {
+		t.Fatalf("Normalize returned error: %v", err)
+	}
+	if !config.NoUploads {
+		t.Fatal("expected NoUploads to remain true")
+	}
+}

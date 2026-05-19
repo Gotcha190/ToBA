@@ -18,6 +18,7 @@ type CreateOptions struct {
 	SSHTarget           string
 	RemoteWordPressRoot string
 	DryRun              bool
+	NoUploads           bool
 	Sequential          bool
 }
 
@@ -103,6 +104,7 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 		config.RemoteWordPressRoot = opts.RemoteWordPressRoot
 	}
 	config.DryRun = opts.DryRun
+	config.NoUploads = opts.NoUploads
 
 	if strings.TrimSpace(config.Name) == "" {
 		return fmt.Errorf("project name is required; pass it as argument: toba create <project-name>")
