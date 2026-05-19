@@ -17,6 +17,7 @@ type ProjectConfig struct {
 	SSHTarget           string
 	RemoteWordPressRoot string
 	DryRun              bool
+	NoUploads           bool
 }
 
 // Normalize validates the project name and fills the derived defaults required

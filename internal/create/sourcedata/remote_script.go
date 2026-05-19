@@ -10,8 +10,8 @@ import (
 //
 // Returns:
 // - the shell script executed on the SSH host
-func remotePreparationScript(remoteWordPressRoot string, remoteDatabase string, remotePlugins string, remoteUploads string, remoteSourceURL string) string {
-	return strings.Join([]string{
+func remotePreparationScript(remoteWordPressRoot string, remoteDatabase string, remotePlugins string, remoteUploads string, remoteSourceURL string, includeUploads bool) string {
+	commands := []string{
 		"set -eu",
 		"if [ ! -d " + shellQuote(remoteWordPressRoot) + " ]; then printf '%s\\n' " + shellQuote("__TOBA_REMOTE_ROOT_MISSING__") + "; exit 42; fi",
 		"cleanup_on_error() { status=$?; if [ \"$status\" -ne 0 ]; then rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + " " + shellQuote(remoteSourceURL) + "; fi; exit \"$status\"; }",
@@ -22,13 +22,21 @@ func remotePreparationScript(remoteWordPressRoot string, remoteDatabase string, 
 		"wp84 option get home > " + shellQuote(pathBase(remoteSourceURL)) + " & pid_source=$!",
 		"wp84 db export " + shellQuote(pathBase(remoteDatabase)) + " >/dev/null & pid_db=$!",
 		"(cd wp-content && zip -r -q ../" + shellQuote(pathBase(remotePlugins)) + " plugins) & pid_plugins=$!",
-		"(cd wp-content && zip -r -q -0 ../" + shellQuote(pathBase(remoteUploads)) + " . -i " + shellQuote("uploads/*") + ") & pid_uploads=$!",
+	}
+	if includeUploads {
+		commands = append(commands, "(cd wp-content && zip -r -q -0 ../"+shellQuote(pathBase(remoteUploads))+" . -i "+shellQuote("uploads/*")+") & pid_uploads=$!")
+	}
+	commands = append(commands,
 		"wait \"$pid_source\"",
 		"wait \"$pid_db\"",
 		"wait \"$pid_plugins\"",
-		"wait \"$pid_uploads\"",
-		"cat " + shellQuote(pathBase(remoteSourceURL)),
-	}, "; ")
+	)
+	if includeUploads {
+		commands = append(commands, "wait \"$pid_uploads\"")
+	}
+	commands = append(commands, "cat "+shellQuote(pathBase(remoteSourceURL)))
+
+	return strings.Join(commands, "; ")
 }
 
 // normalizeSourceURL validates the captured remote site URL and returns a normalized string form.

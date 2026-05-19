@@ -30,7 +30,7 @@ ToBA udostępnia cztery komendy:
 Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
-- `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
+- `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje. Z flagą `--no-uploads` pomija uploads i konfiguruje fallback do zdalnej strony.
 
 ## Wymagania
 
@@ -156,7 +156,7 @@ www/example.com
 
 ```bash
 toba config
-toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--sequential]
+toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--no-uploads] [--sequential]
 toba doctor
 toba version
 ```
@@ -173,13 +173,14 @@ toba version
 6. instaluje WordPress i tworzy `wp-config.php`,
 7. instaluje albo przywraca theme,
 8. buduje starter theme,
-9. przywraca plugins, uploads i opcjonalne others,
+9. przywraca plugins, uploads i opcjonalne others; z `--no-uploads` pomija import uploads,
 10. przygotowuje i importuje database,
 11. wykrywa prefix tabel i w razie potrzeby aktualizuje `wp-config.php`,
 12. wykonuje `search-replace` na lokalną domenę,
 13. resetuje albo tworzy lokalnego administratora `tamago`,
 14. aktywuje theme,
-15. czyści cache i odświeża rewrite rules.
+15. czyści cache i odświeża rewrite rules,
+16. z `--no-uploads` zapisuje fallback uploads w `app/.htaccess`.
 
 Pipeline jest grafem zależności, więc niezależne kroki nie muszą czekać na zakończenie całej poprzedniej warstwy. Przykłady:
 
@@ -187,7 +188,8 @@ Pipeline jest grafem zależności, więc niezależne kroki nie muszą czekać na
 - import `plugins`, `uploads`, `others` i instalacja WordPressa mogą wykonywać się niezależnie po spełnieniu swoich zależności,
 - theme build może wystartować po dostępności Lando, theme i plugins,
 - import bazy i pierwszy `wp search-replace` czekają na wymagane przywrócenie pluginów i innych zależnych plików,
-- końcowe kroki cache/rewrite uruchamiają się dopiero po wymaganych importach i aktywacji theme.
+- końcowe kroki cache/rewrite uruchamiają się dopiero po wymaganych importach i aktywacji theme,
+- w trybie `--no-uploads` odświeżenie cache theme czeka także na zapis fallbacku w `.htaccess`.
 
 Do debugowania i porównań zachowania można uruchomić:
 
@@ -230,6 +232,8 @@ Zasady:
 - zdalne pliki tymczasowe są usuwane po pobraniu albo przy błędzie przygotowania,
 - lokalne pliki starter data trafiają do tymczasowego katalogu `toba-starter-*`, który jest usuwany po zakończeniu `toba create`.
 
+Flaga `--no-uploads` działa tylko w SSH mode. Wtedy ToBA nadal pobiera URL źródłowy, bazę i plugins, ale nie tworzy ani nie pobiera archiwum `uploads`, pomija import uploads i po `lando wp rewrite flush --hard` zapisuje blok `# BEGIN ToBA Uploads Fallback` w `app/.htaccess`. Brakujące lokalne ścieżki `/wp-content/uploads/...` są przekierowywane HTTP 302 do źródłowej strony, a istniejące lokalnie pliki uploads nadal są serwowane lokalnie. W local backup mode `--no-uploads` kończy się błędem, bo lokalny backup nadal wymaga archiwów uploads.
+
 ## Przykłady
 
 Utworzenie projektu z lokalnego backupu plików Updrafta:
@@ -248,6 +252,12 @@ Utworzenie projektu przez SSH:
 ```bash
 toba config
 toba create demo --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
+```
+
+Utworzenie projektu przez SSH bez pobierania uploads:
+
+```bash
+toba create demo --no-uploads --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
 ```
 
 Suchy przebieg bez zapisu plików:
