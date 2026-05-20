@@ -2,15 +2,11 @@ package theme
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 )
-
-const testStarterRepo = "git@example.com:company/starter.git"
 
 type recordedCommand struct {
 	dir  string
@@ -33,11 +29,6 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 		args: append([]string(nil), args...),
 	})
 	r.mu.Unlock()
-	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
-		if err := os.MkdirAll(filepath.Join(dir, args[2]), 0755); err != nil {
-			return err
-		}
-	}
 	if r.runErr != nil {
 		key := strings.Join(append([]string{cmd}, args...), " ")
 		if err, ok := r.runErr[key]; ok {
@@ -49,43 +40,6 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 
 func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
 	return "", r.err
-}
-
-func TestInstallReturnsMissingRepoError(t *testing.T) {
-	_, err := Install(&fakeRunner{}, t.TempDir(), "", "demo")
-	if err == nil {
-		t.Fatal("expected missing starter repo error")
-	}
-	if !strings.Contains(err.Error(), "TOBA_STARTER_REPO") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestInstallRunsCloneCommand(t *testing.T) {
-	themesDir := t.TempDir()
-	runner := &fakeRunner{}
-
-	targetDir, err := Install(runner, themesDir, testStarterRepo, "demo")
-	if err != nil {
-		t.Fatalf("Install returned error: %v", err)
-	}
-
-	expectedTarget := filepath.Join(themesDir, "demo")
-	if targetDir != expectedTarget {
-		t.Fatalf("expected target dir %q, got %q", expectedTarget, targetDir)
-	}
-
-	expected := []recordedCommand{
-		{
-			dir:  themesDir,
-			cmd:  "git",
-			args: []string{"clone", testStarterRepo, "demo"},
-		},
-	}
-
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
-	}
 }
 
 func TestBuildRunsExpectedCommands(t *testing.T) {
@@ -218,18 +172,5 @@ func TestGenerateAcornKeyRunsTwice(t *testing.T) {
 
 	if !reflect.DeepEqual(runner.commands, expected) {
 		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
-	}
-}
-
-func TestInstallFailsWhenTargetExists(t *testing.T) {
-	themesDir := t.TempDir()
-	targetDir := filepath.Join(themesDir, "demo")
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		t.Fatalf("failed to create target dir: %v", err)
-	}
-
-	_, err := Install(&fakeRunner{}, themesDir, testStarterRepo, "demo")
-	if err == nil {
-		t.Fatal("expected install to fail when theme dir exists")
 	}
 }

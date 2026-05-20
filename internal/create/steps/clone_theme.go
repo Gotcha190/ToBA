@@ -2,26 +2,26 @@ package steps
 
 import (
 	"github.com/gotcha190/toba/internal/create"
-	"github.com/gotcha190/toba/internal/theme"
+	"github.com/gotcha190/toba/internal/git"
 )
 
-type InstallThemeStep struct{}
+type CloneStarterThemeStep struct{}
 
-// NewInstallThemeStep creates the pipeline step that restores local theme
+// NewCloneStarterThemeStep creates the pipeline step that restores local theme
 // archives or clones the starter theme repository.
 //
 // Returns:
-// - a configured InstallThemeStep instance
-func NewInstallThemeStep() *InstallThemeStep {
-	return &InstallThemeStep{}
+// - a configured CloneStarterThemeStep instance
+func NewCloneStarterThemeStep() *CloneStarterThemeStep {
+	return &CloneStarterThemeStep{}
 }
 
 // Name returns the human-readable pipeline label for this step.
 //
 // Returns:
 // - the display name used by pipeline logging
-func (s *InstallThemeStep) Name() string {
-	return "Install starter theme"
+func (s *CloneStarterThemeStep) Name() string {
+	return "Clone starter theme"
 }
 
 // Run installs the theme from local archives or the configured starter
@@ -37,7 +37,7 @@ func (s *InstallThemeStep) Name() string {
 // - may extract theme archives into wp-content
 // - may run `git clone` through the configured runner
 // - logs planned actions instead of mutating the project in dry-run mode
-func (s *InstallThemeStep) Run(ctx *create.Context) error {
+func (s *CloneStarterThemeStep) Run(ctx *create.Context) error {
 	if len(ctx.StarterData.ThemePaths) > 0 {
 		if ctx.DryRun {
 			ctx.Logger.Info("Would extract local themes: " + ctx.Paths.WPContent)
@@ -49,12 +49,12 @@ func (s *InstallThemeStep) Run(ctx *create.Context) error {
 
 	if ctx.DryRun {
 		if ctx.Config.StarterRepo == "" {
-			return theme.MissingStarterRepoError{}
+			return git.MissingStarterRepoError{}
 		}
 		ctx.Logger.Info("Would run: git clone " + ctx.Config.StarterRepo + " " + ctx.Config.Name)
 		return nil
 	}
 
-	_, err := theme.Install(ctx.Runner, ctx.Paths.Themes, ctx.Config.StarterRepo, ctx.Config.Name)
+	_, err := git.Clone(ctx.Runner, ctx.Paths.Themes, ctx.Config.StarterRepo, ctx.Config.Name)
 	return err
 }

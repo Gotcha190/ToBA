@@ -1,9 +1,6 @@
 package theme
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/gotcha190/toba/internal/create"
@@ -12,54 +9,6 @@ import (
 type buildCommand struct {
 	cmd  string
 	args []string
-}
-
-type MissingStarterRepoError struct{}
-
-// Error explains how to provide the missing starter repository setting.
-//
-// Returns:
-// - the human-readable error string
-func (e MissingStarterRepoError) Error() string {
-	return "starter repo is not configured; add TOBA_STARTER_REPO to ~/.config/toba/.env via 'toba config' or pass --starter-repo and try again"
-}
-
-// Install clones the configured starter repository into themesDir/themeName.
-//
-// Parameters:
-// - runner: command runner used to launch git
-// - themesDir: local WordPress themes directory
-// - starterRepo: git repository to clone
-// - themeName: destination directory name for the cloned theme
-//
-// Returns:
-// - the local theme directory path
-// - an error when the repository is missing, the destination exists, or cloning fails
-//
-// Side effects:
-// - may create the themes directory
-// - runs `git clone` through the provided runner
-func Install(runner create.CommandRunner, themesDir string, starterRepo string, themeName string) (string, error) {
-	if strings.TrimSpace(starterRepo) == "" {
-		return "", MissingStarterRepoError{}
-	}
-
-	if err := os.MkdirAll(themesDir, 0755); err != nil {
-		return "", err
-	}
-
-	targetDir := filepath.Join(themesDir, themeName)
-	if _, err := os.Stat(targetDir); err == nil {
-		return "", create.NewCodedError("THEME_DIR_EXISTS", "theme directory already exists: "+targetDir, nil)
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-
-	if err := runner.Run(themesDir, "git", "clone", starterRepo, themeName); err != nil {
-		return "", create.NewCodedError("THEME_CLONE_FAILED", "starter theme clone failed", err)
-	}
-
-	return targetDir, nil
 }
 
 // Build installs dependencies and builds the cloned starter theme.

@@ -40,7 +40,7 @@ func (r *themeStepRunner) CaptureOutput(dir string, cmd string, args ...string) 
 	return r.outputs[key], nil
 }
 
-func TestInstallThemeStepUsesLocalThemesBackup(t *testing.T) {
+func TestCloneStarterThemeStepUsesLocalThemesBackup(t *testing.T) {
 	ctx := newThemeStepContext(t)
 	ctx.StarterData.ThemePaths = []string{
 		writeZipFixture(t, ctx.Paths.Root, "starter-themes.zip", map[string]string{
@@ -48,12 +48,124 @@ func TestInstallThemeStepUsesLocalThemesBackup(t *testing.T) {
 		}),
 	}
 
-	if err := NewInstallThemeStep().Run(ctx); err != nil {
-		t.Fatalf("InstallThemeStep returned error: %v", err)
+	if err := NewCloneStarterThemeStep().Run(ctx); err != nil {
+		t.Fatalf("CloneStarterThemeStep returned error: %v", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(ctx.Paths.Themes, "sage", "style.css")); err != nil {
 		t.Fatalf("expected restored theme to exist: %v", err)
+	}
+}
+
+func TestCloneStarterThemeStepDryRunLogsClone(t *testing.T) {
+	logger := &starterTestLogger{}
+	runner := &themeStepRunner{}
+	ctx := newThemeStepContext(t)
+	ctx.DryRun = true
+	ctx.Logger = logger
+	ctx.Runner = runner
+
+	if err := NewCloneStarterThemeStep().Run(ctx); err != nil {
+		t.Fatalf("CloneStarterThemeStep returned error: %v", err)
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("expected no dry-run commands, got %#v", runner.commands)
+	}
+
+	expected := []string{
+		"Would run: git clone git@example.com:company/starter.git demo",
+	}
+	for _, message := range expected {
+		if !containsString(logger.infos, message) {
+			t.Fatalf("expected dry-run log %q in %#v", message, logger.infos)
+		}
+	}
+}
+
+func TestSetupThemeGitStepDryRunLogsGitSetup(t *testing.T) {
+	logger := &starterTestLogger{}
+	runner := &themeStepRunner{}
+	ctx := newThemeStepContext(t)
+	ctx.DryRun = true
+	ctx.Logger = logger
+	ctx.Runner = runner
+
+	if err := NewSetupThemeGitStep().Run(ctx); err != nil {
+		t.Fatalf("SetupThemeGitStep returned error: %v", err)
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("expected no dry-run commands, got %#v", runner.commands)
+	}
+
+	expected := []string{
+		"Would run in " + filepath.Join(ctx.Paths.Themes, "demo") + ": git remote remove origin",
+		"Would run in " + filepath.Join(ctx.Paths.Themes, "demo") + ": git branch -M develop",
+		"Would run in " + filepath.Join(ctx.Paths.Themes, "demo") + ": git branch -f starter develop",
+		"Would check project repo derived from starter repo: git@example.com:company/demo.git",
+		"Would add origin and push develop/starter if project repo exists",
+	}
+	for _, message := range expected {
+		if !containsString(logger.infos, message) {
+			t.Fatalf("expected dry-run log %q in %#v", message, logger.infos)
+		}
+	}
+}
+
+func TestSetupThemeGitStepDryRunWarnsForInvalidStarterRepo(t *testing.T) {
+	logger := &starterTestLogger{}
+	runner := &themeStepRunner{}
+	ctx := newThemeStepContext(t)
+	ctx.DryRun = true
+	ctx.Logger = logger
+	ctx.Runner = runner
+	ctx.Config.StarterRepo = "not-a-repo"
+
+	if err := NewSetupThemeGitStep().Run(ctx); err != nil {
+		t.Fatalf("SetupThemeGitStep returned error: %v", err)
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("expected no dry-run commands, got %#v", runner.commands)
+	}
+	if !containsString(logger.warnings, "Could not derive project git repo from starter repo; skipping branch push") {
+		t.Fatalf("expected invalid starter repo warning in %#v", logger.warnings)
+	}
+}
+
+func TestSetupThemeGitStepWarnsAndContinuesWhenGitCommandsFail(t *testing.T) {
+	logger := &starterTestLogger{}
+	runner := &themeStepRunner{
+		runErr: map[string]error{
+			"git remote remove origin":                       errors.New("remove failed"),
+			"git branch -M develop":                          errors.New("branch failed"),
+			"git ls-remote git@example.com:company/demo.git": errors.New("repo missing"),
+		},
+	}
+	ctx := newThemeStepContext(t)
+	ctx.Logger = logger
+	ctx.Runner = runner
+
+	if err := NewSetupThemeGitStep().Run(ctx); err != nil {
+		t.Fatalf("SetupThemeGitStep returned error: %v", err)
+	}
+	if len(logger.warnings) == 0 {
+		t.Fatal("expected warnings when git setup fails")
+	}
+	if !themeStepHasCommand(runner.commands, "git", []string{"branch", "-f", "starter", "develop"}) {
+		t.Fatalf("expected setup to continue through starter branch command, got %#v", runner.commands)
+	}
+}
+
+func TestSetupThemeGitStepSkipsLocalThemesBackup(t *testing.T) {
+	runner := &themeStepRunner{}
+	ctx := newThemeStepContext(t)
+	ctx.Runner = runner
+	ctx.StarterData.ThemePaths = []string{"starter-themes.zip"}
+
+	if err := NewSetupThemeGitStep().Run(ctx); err != nil {
+		t.Fatalf("SetupThemeGitStep returned error: %v", err)
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("expected no git setup commands, got %#v", runner.commands)
 	}
 }
 
@@ -165,4 +277,27 @@ func newThemeStepContext(t *testing.T) *create.Context {
 	}
 
 	return ctx
+}
+
+func themeStepHasCommand(commands []recordedCommand, cmd string, args []string) bool {
+	for _, command := range commands {
+		if command.cmd != cmd {
+			continue
+		}
+		if len(command.args) != len(args) {
+			continue
+		}
+		matches := true
+		for i := range args {
+			if command.args[i] != args[i] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+
+	return false
 }
