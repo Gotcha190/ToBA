@@ -9,17 +9,8 @@ import (
 	"testing"
 
 	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/testutil"
 )
-
-type restoreTestRunner struct{}
-
-func (r restoreTestRunner) Run(dir string, cmd string, args ...string) error {
-	return nil
-}
-
-func (r restoreTestRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	return "", nil
-}
 
 func TestImportPluginsStepExtractsMultipleArchives(t *testing.T) {
 	ctx := newRestoreTestContext(t)
@@ -61,7 +52,7 @@ func TestImportOthersStepExtractsIntoWPContentWithoutNestedExpansion(t *testing.
 }
 
 func TestImportDatabaseStepWritesSQLAndRunsRewrite(t *testing.T) {
-	runner := &recordingRunner{}
+	runner := &testutil.RecordingRunner{}
 	ctx := newRestoreTestContext(t)
 	ctx.Runner = runner
 	ctx.Config.Domain = "demo.lndo.site"
@@ -73,19 +64,19 @@ func TestImportDatabaseStepWritesSQLAndRunsRewrite(t *testing.T) {
 	if _, err := os.Stat(ctx.Paths.DatabaseSQL); err != nil {
 		t.Fatalf("expected %s to exist: %v", ctx.Paths.DatabaseSQL, err)
 	}
-	if len(runner.commands) != 2 {
-		t.Fatalf("expected 2 commands, got %d", len(runner.commands))
+	if len(runner.Commands) != 2 {
+		t.Fatalf("expected 2 commands, got %d", len(runner.Commands))
 	}
-	if got := runner.commands[0].args; len(got) < 2 || got[0] != "db-import" || got[1] != "app/database.sql" {
+	if got := runner.Commands[0].Args; len(got) < 2 || got[0] != "db-import" || got[1] != "app/database.sql" {
 		t.Fatalf("unexpected db-import args: %#v", got)
 	}
-	if got := runner.commands[1].args; len(got) < 4 || got[2] != "https://starter.example.test" || got[3] != "https://demo.lndo.site" {
+	if got := runner.Commands[1].Args; len(got) < 4 || got[2] != "https://starter.example.test" || got[3] != "https://demo.lndo.site" {
 		t.Fatalf("unexpected search-replace args: %#v", got)
 	}
 }
 
 func TestImportDatabaseStepUpdatesConfigForCustomPrefix(t *testing.T) {
-	runner := &recordingRunner{}
+	runner := &testutil.RecordingRunner{}
 	ctx := newRestoreTestContext(t)
 	ctx.Runner = runner
 	ctx.Config.Domain = "demo.lndo.site"
@@ -113,13 +104,13 @@ func TestImportDatabaseStepUpdatesConfigForCustomPrefix(t *testing.T) {
 	if !bytes.Contains(updated, []byte("$table_prefix = 'txxbt_';")) {
 		t.Fatalf("expected custom table prefix in wp-config.php, got:\n%s", string(updated))
 	}
-	if len(runner.commands) != 2 {
-		t.Fatalf("expected 2 commands, got %d", len(runner.commands))
+	if len(runner.Commands) != 2 {
+		t.Fatalf("expected 2 commands, got %d", len(runner.Commands))
 	}
 }
 
 func TestClearImportedCachesStepRemovesCacheDirAndRunsFlushCommands(t *testing.T) {
-	runner := &recordingRunner{}
+	runner := &testutil.RecordingRunner{}
 	ctx := newRestoreTestContext(t)
 	ctx.Runner = runner
 
@@ -138,52 +129,12 @@ func TestClearImportedCachesStepRemovesCacheDirAndRunsFlushCommands(t *testing.T
 	if _, err := os.Stat(filepath.Join(ctx.Paths.WPContent, "cache")); !os.IsNotExist(err) {
 		t.Fatalf("expected cache dir to be removed, got err=%v", err)
 	}
-	if len(runner.commands) != 1 {
-		t.Fatalf("expected 1 command, got %d", len(runner.commands))
+	if len(runner.Commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(runner.Commands))
 	}
-	if got := runner.commands[0].args; len(got) != 3 || got[0] != "wp" || got[1] != "cache" || got[2] != "flush" {
+	if got := runner.Commands[0].Args; len(got) != 3 || got[0] != "wp" || got[1] != "cache" || got[2] != "flush" {
 		t.Fatalf("unexpected wp cache flush args: %#v", got)
 	}
-}
-
-type recordedCommand struct {
-	dir  string
-	cmd  string
-	args []string
-}
-
-type recordingRunner struct {
-	commands        []recordedCommand
-	runErrByCommand map[string]error
-}
-
-func (r *recordingRunner) Run(dir string, cmd string, args ...string) error {
-	r.commands = append(r.commands, recordedCommand{
-		dir:  dir,
-		cmd:  cmd,
-		args: append([]string(nil), args...),
-	})
-	if r.runErrByCommand != nil {
-		if err, ok := r.runErrByCommand[cmd+" "+joinArgs(args)]; ok {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *recordingRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	return "", nil
-}
-
-func joinArgs(args []string) string {
-	result := ""
-	for i, arg := range args {
-		if i > 0 {
-			result += " "
-		}
-		result += arg
-	}
-	return result
 }
 
 func newRestoreTestContext(t *testing.T) *create.Context {
@@ -191,7 +142,7 @@ func newRestoreTestContext(t *testing.T) *create.Context {
 
 	baseDir := t.TempDir()
 	config := create.ProjectConfig{Name: "demo", Domain: "demo.lndo.site"}
-	ctx := create.NewContext(baseDir, config, create.ConsoleLogger{}, restoreTestRunner{})
+	ctx := create.NewContext(baseDir, config, create.ConsoleLogger{}, &testutil.RecordingRunner{})
 
 	for _, dir := range []string{ctx.Paths.Root, ctx.Paths.AppDir, ctx.Paths.ConfigDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
