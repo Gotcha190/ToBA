@@ -221,62 +221,56 @@ func TestTrySetupProjectBranchesAvailableProjectRepoPushesBranches(t *testing.T)
 	assertRecordedCommand(t, runner.Commands, "git", []string{"push", "-u", "origin", "develop", "starter"})
 }
 
-func TestTrySetupProjectBranchesExistingRemoteDevelopSkipsPush(t *testing.T) {
-	runner := &testutil.RecordingRunner{
-		Outputs: map[string]string{
-			"git ls-remote --heads " + testProjectRepo + " develop starter": "abc123\trefs/heads/develop\n",
+func TestTrySetupProjectBranchesSkipsPushAfterRemoteBranchGuard(t *testing.T) {
+	branchCheckCommand := "git ls-remote --heads " + testProjectRepo + " develop starter"
+	tests := []struct {
+		name            string
+		output          string
+		err             error
+		expectedWarning string
+	}{
+		{
+			name:            "existing develop",
+			output:          "abc123\trefs/heads/develop\n",
+			expectedWarning: "already has develop or starter branch",
+		},
+		{
+			name:            "existing starter",
+			output:          "abc123\trefs/heads/starter\n",
+			expectedWarning: "already has develop or starter branch",
+		},
+		{
+			name:            "inspection error",
+			err:             errors.New("inspect failed"),
+			expectedWarning: "Could not inspect project git branches",
 		},
 	}
 
-	result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := &testutil.RecordingRunner{
+				Outputs: map[string]string{
+					branchCheckCommand: tt.output,
+				},
+				CaptureErrByCommand: map[string]error{},
+			}
+			if tt.err != nil {
+				runner.CaptureErrByCommand[branchCheckCommand] = tt.err
+			}
 
-	if result.Pushed {
-		t.Fatal("expected Pushed to be false")
-	}
-	if !containsWarning(result.Warnings, "already has develop or starter branch") {
-		t.Fatalf("expected existing branch warning, got %#v", result.Warnings)
-	}
-	assertRecordedCommand(t, runner.Commands, "git", []string{"ls-remote", "--heads", testProjectRepo, "develop", "starter"})
-	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
-}
+			result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
 
-func TestTrySetupProjectBranchesExistingRemoteStarterSkipsPush(t *testing.T) {
-	runner := &testutil.RecordingRunner{
-		Outputs: map[string]string{
-			"git ls-remote --heads " + testProjectRepo + " develop starter": "abc123\trefs/heads/starter\n",
-		},
+			if result.Pushed {
+				t.Fatal("expected Pushed to be false")
+			}
+			if !containsWarning(result.Warnings, tt.expectedWarning) {
+				t.Fatalf("expected warning %q, got %#v", tt.expectedWarning, result.Warnings)
+			}
+			assertRecordedCommand(t, runner.Commands, "git", []string{"ls-remote", "--heads", testProjectRepo, "develop", "starter"})
+			assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
+			assertNoRecordedGitSubcommand(t, runner.Commands, "push")
+		})
 	}
-
-	result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
-
-	if result.Pushed {
-		t.Fatal("expected Pushed to be false")
-	}
-	if !containsWarning(result.Warnings, "already has develop or starter branch") {
-		t.Fatalf("expected existing branch warning, got %#v", result.Warnings)
-	}
-	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
-}
-
-func TestTrySetupProjectBranchesBranchInspectionErrorSkipsPush(t *testing.T) {
-	runner := &testutil.RecordingRunner{
-		CaptureErrByCommand: map[string]error{
-			"git ls-remote --heads " + testProjectRepo + " develop starter": errors.New("inspect failed"),
-		},
-	}
-
-	result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
-
-	if result.Pushed {
-		t.Fatal("expected Pushed to be false")
-	}
-	if !containsWarning(result.Warnings, "Could not inspect project git branches") {
-		t.Fatalf("expected inspection warning, got %#v", result.Warnings)
-	}
-	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
 }
 
 func TestTrySetupProjectBranchesRemoteAddErrorSkipsPush(t *testing.T) {
