@@ -9,49 +9,11 @@ import (
 	"testing"
 
 	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/testutil"
 )
 
-type recordedCommand struct {
-	dir  string
-	cmd  string
-	args []string
-}
-
-type fakeRunner struct {
-	commands    []recordedCommand
-	err         error
-	outputs     map[string]string
-	captureErrs map[string]error
-}
-
-func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
-	r.commands = append(r.commands, recordedCommand{
-		dir:  dir,
-		cmd:  cmd,
-		args: append([]string(nil), args...),
-	})
-	return r.err
-}
-
-func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	r.commands = append(r.commands, recordedCommand{
-		dir:  dir,
-		cmd:  cmd,
-		args: append([]string(nil), args...),
-	})
-	if r.captureErrs != nil {
-		if err, ok := r.captureErrs[cmd+" "+strings.Join(args, " ")]; ok {
-			return r.outputs[cmd+" "+strings.Join(args, " ")], err
-		}
-	}
-	if r.err != nil {
-		return "", r.err
-	}
-	return r.outputs[cmd+" "+strings.Join(args, " ")], nil
-}
-
 func TestInstallRunsExpectedCommands(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 	config := create.ProjectConfig{
 		Name:   "my-project",
 		Domain: "my-project.lndo.site",
@@ -62,27 +24,27 @@ func TestInstallRunsExpectedCommands(t *testing.T) {
 		t.Fatalf("Install returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp core download --locale='pl_PL' && wp config create --dbname='wordpress' --dbuser='wordpress' --dbpass='wordpress' --dbhost='database' --dbcharset='utf8mb4'"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp core download --locale='pl_PL' && wp config create --dbname='wordpress' --dbuser='wordpress' --dbpass='wordpress' --dbhost='database' --dbcharset='utf8mb4'"},
 		},
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "core", "install", "--url=my-project.lndo.site", "--title=My Project", "--admin_user=tamago", "--admin_email=email@email.pl", "--admin_password=tamago"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "core", "install", "--url=my-project.lndo.site", "--title=My Project", "--admin_user=tamago", "--admin_email=email@email.pl", "--admin_password=tamago"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
 func TestInstallReturnsCommandError(t *testing.T) {
 	expectedErr := errors.New("boom")
-	runner := &fakeRunner{err: expectedErr}
+	runner := &testutil.RecordingRunner{Err: expectedErr}
 
 	err := Install(runner, "/tmp/demo", create.ProjectConfig{Name: "demo", Domain: "demo.lndo.site"})
 	if !errors.Is(err, expectedErr) {
@@ -97,22 +59,22 @@ func TestProjectTitle(t *testing.T) {
 }
 
 func TestImportDatabaseRunsExpectedCommand(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	if err := ImportDatabase(runner, "/tmp/demo", "/tmp/demo/app/database.sql"); err != nil {
 		t.Fatalf("ImportDatabase returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"db-import", "app/database.sql"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"db-import", "app/database.sql"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
@@ -260,7 +222,7 @@ func TestSetProjectConfigIncludeUpdatesFile(t *testing.T) {
 
 func TestInstallIncludesProjectConfigWhenPresent(t *testing.T) {
 	dir := t.TempDir()
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 	config := create.ProjectConfig{
 		Name:   "my-project",
 		Domain: "my-project.lndo.site",
@@ -296,17 +258,17 @@ func TestInstallIncludesProjectConfigWhenPresent(t *testing.T) {
 }
 
 func TestSearchReplaceRunsExpectedCommand(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	if err := SearchReplace(runner, "/tmp/demo", "https://old.example.com", "https://demo.lndo.site"); err != nil {
 		t.Fatalf("SearchReplace returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir: "/tmp/demo",
-			cmd: "lando",
-			args: []string{
+			Dir: "/tmp/demo",
+			Cmd: "lando",
+			Args: []string{
 				"wp",
 				"search-replace",
 				"https://old.example.com",
@@ -317,14 +279,14 @@ func TestSearchReplaceRunsExpectedCommand(t *testing.T) {
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
 func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
-	runner := &fakeRunner{
-		outputs: map[string]string{
+	runner := &testutil.RecordingRunner{
+		Outputs: map[string]string{
 			"lando wp eval $user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}": "",
 		},
 	}
@@ -333,42 +295,42 @@ func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
 		t.Fatalf("ResetAdminPassword returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "eval", "$user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "eval", "$user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
 func TestActivateThemeRunsExpectedCommand(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	if err := ActivateTheme(runner, "/tmp/demo", "demo"); err != nil {
 		t.Fatalf("ActivateTheme returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "theme", "activate", "demo"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "theme", "activate", "demo"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
 func TestDetectImportedThemeSlugPrefersStylesheet(t *testing.T) {
-	runner := &fakeRunner{
-		outputs: map[string]string{
+	runner := &testutil.RecordingRunner{
+		Outputs: map[string]string{
 			"lando wp eval echo get_option('stylesheet') ?: get_option('template');": "sage\n",
 		},
 	}
@@ -383,28 +345,28 @@ func TestDetectImportedThemeSlugPrefersStylesheet(t *testing.T) {
 }
 
 func TestFlushRewriteRulesRunsExpectedCommand(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	if err := FlushRewriteRules(runner, "/tmp/demo"); err != nil {
 		t.Fatalf("FlushRewriteRules returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "rewrite", "flush", "--hard"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "rewrite", "flush", "--hard"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
 func TestRefreshThemeCachesRunsExpectedCommands(t *testing.T) {
-	runner := &fakeRunner{
-		outputs: map[string]string{
+	runner := &testutil.RecordingRunner{
+		Outputs: map[string]string{
 			"lando wp acorn list": "  optimize         Cache the framework bootstrap files\n  cache:clear      Flush the application cache\n  acf:cache        Cache ACF assets\n",
 		},
 	}
@@ -413,27 +375,27 @@ func TestRefreshThemeCachesRunsExpectedCommands(t *testing.T) {
 		t.Fatalf("RefreshThemeCaches returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "list"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "acorn", "list"},
 		},
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn optimize && wp acorn cache:clear && wp acorn acf:cache"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn optimize && wp acorn cache:clear && wp acorn acf:cache"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
 func TestRefreshThemeCachesSkipsUnavailableCommands(t *testing.T) {
-	runner := &fakeRunner{
-		outputs: map[string]string{
+	runner := &testutil.RecordingRunner{
+		Outputs: map[string]string{
 			"lando wp acorn list": "  optimize:clear   Remove the cached bootstrap files\n",
 		},
 	}
@@ -442,27 +404,27 @@ func TestRefreshThemeCachesSkipsUnavailableCommands(t *testing.T) {
 		t.Fatalf("RefreshThemeCaches returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "list"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "acorn", "list"},
 		},
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn optimize:clear"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn optimize:clear"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
 func TestRefreshThemeCachesFallsBackToConfigClear(t *testing.T) {
-	runner := &fakeRunner{
-		outputs: map[string]string{
+	runner := &testutil.RecordingRunner{
+		Outputs: map[string]string{
 			"lando wp acorn list": "  config:clear     Remove the configuration cache file\n",
 		},
 	}
@@ -471,21 +433,21 @@ func TestRefreshThemeCachesFallsBackToConfigClear(t *testing.T) {
 		t.Fatalf("RefreshThemeCaches returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "list"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "acorn", "list"},
 		},
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn config:clear"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"ssh", "-s", "appserver", "-c", "cd /app && wp acorn config:clear"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 

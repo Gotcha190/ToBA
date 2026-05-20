@@ -6,80 +6,17 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/gotcha190/toba/internal/create"
+	"github.com/gotcha190/toba/internal/testutil"
 )
 
 const testStarterRepo = "git@example.com:company/starter.git"
 const testProjectRepo = "git@example.com:company/demo.git"
 
-type recordedCommand struct {
-	dir  string
-	cmd  string
-	args []string
-}
-
-type fakeRunner struct {
-	mu                     sync.Mutex
-	commands               []recordedCommand
-	err                    error
-	runErrByCommand        map[string]error
-	captureOutputByCommand map[string]string
-	captureErrByCommand    map[string]error
-}
-
-func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
-	r.mu.Lock()
-	r.commands = append(r.commands, recordedCommand{
-		dir:  dir,
-		cmd:  cmd,
-		args: append([]string(nil), args...),
-	})
-	r.mu.Unlock()
-
-	if r.runErrByCommand != nil {
-		if err, ok := r.runErrByCommand[cmd+" "+strings.Join(args, " ")]; ok {
-			return err
-		}
-	}
-	if r.err != nil {
-		return r.err
-	}
-	if cmd == "git" && len(args) == 3 && args[0] == "clone" {
-		return os.MkdirAll(filepath.Join(dir, args[2]), 0755)
-	}
-
-	return nil
-}
-
-func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	r.mu.Lock()
-	r.commands = append(r.commands, recordedCommand{
-		dir:  dir,
-		cmd:  cmd,
-		args: append([]string(nil), args...),
-	})
-	r.mu.Unlock()
-
-	key := cmd + " " + strings.Join(args, " ")
-	if r.captureErrByCommand != nil {
-		if err, ok := r.captureErrByCommand[key]; ok {
-			return "", err
-		}
-	}
-	if r.captureOutputByCommand != nil {
-		if output, ok := r.captureOutputByCommand[key]; ok {
-			return output, nil
-		}
-	}
-
-	return "", r.err
-}
-
 func TestCloneReturnsMissingRepoError(t *testing.T) {
-	_, err := Clone(&fakeRunner{}, t.TempDir(), "", "demo")
+	_, err := Clone(&testutil.RecordingRunner{}, t.TempDir(), "", "demo")
 	if err == nil {
 		t.Fatal("expected missing starter repo error")
 	}
@@ -90,7 +27,7 @@ func TestCloneReturnsMissingRepoError(t *testing.T) {
 
 func TestCloneRunsCloneCommand(t *testing.T) {
 	themesDir := t.TempDir()
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	targetDir, err := Clone(runner, themesDir, testStarterRepo, "demo")
 	if err != nil {
@@ -102,16 +39,16 @@ func TestCloneRunsCloneCommand(t *testing.T) {
 		t.Fatalf("expected target dir %q, got %q", expectedTarget, targetDir)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  themesDir,
-			cmd:  "git",
-			args: []string{"clone", testStarterRepo, "demo"},
+			Dir:  themesDir,
+			Cmd:  "git",
+			Args: []string{"clone", testStarterRepo, "demo"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
@@ -122,14 +59,14 @@ func TestCloneFailsWhenTargetExists(t *testing.T) {
 		t.Fatalf("failed to create target dir: %v", err)
 	}
 
-	_, err := Clone(&fakeRunner{}, themesDir, testStarterRepo, "demo")
+	_, err := Clone(&testutil.RecordingRunner{}, themesDir, testStarterRepo, "demo")
 	assertCodedError(t, err, "THEME_DIR_EXISTS")
 }
 
 func TestCloneReturnsCodedErrorWhenCloneFails(t *testing.T) {
 	expectedErr := errors.New("clone failed")
-	_, err := Clone(&fakeRunner{
-		runErrByCommand: map[string]error{
+	_, err := Clone(&testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"git clone " + testStarterRepo + " demo": expectedErr,
 		},
 	}, t.TempDir(), testStarterRepo, "demo")
@@ -142,8 +79,8 @@ func TestCloneReturnsCodedErrorWhenCloneFails(t *testing.T) {
 
 func TestDetachRemoteAndCreateBranchesReturnsCodedErrorWhenSetupFails(t *testing.T) {
 	expectedErr := errors.New("remote remove failed")
-	err := DetachRemoteAndCreateBranches(&fakeRunner{
-		runErrByCommand: map[string]error{
+	err := DetachRemoteAndCreateBranches(&testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"git remote remove origin": expectedErr,
 		},
 	}, t.TempDir())
@@ -156,32 +93,32 @@ func TestDetachRemoteAndCreateBranchesReturnsCodedErrorWhenSetupFails(t *testing
 
 func TestDetachRemoteAndCreateBranchesRunsGitSetupCommands(t *testing.T) {
 	repoDir := t.TempDir()
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	if err := DetachRemoteAndCreateBranches(runner, repoDir); err != nil {
 		t.Fatalf("DetachRemoteAndCreateBranches returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  repoDir,
-			cmd:  "git",
-			args: []string{"remote", "remove", "origin"},
+			Dir:  repoDir,
+			Cmd:  "git",
+			Args: []string{"remote", "remove", "origin"},
 		},
 		{
-			dir:  repoDir,
-			cmd:  "git",
-			args: []string{"branch", "-M", "develop"},
+			Dir:  repoDir,
+			Cmd:  "git",
+			Args: []string{"branch", "-M", "develop"},
 		},
 		{
-			dir:  repoDir,
-			cmd:  "git",
-			args: []string{"branch", "-f", "starter", "develop"},
+			Dir:  repoDir,
+			Cmd:  "git",
+			Args: []string{"branch", "-f", "starter", "develop"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
 
@@ -206,22 +143,22 @@ func TestProjectRepoURLFromStarterHTTPS(t *testing.T) {
 }
 
 func TestTrySetupProjectBranchesInvalidStarterRepoSkipsPush(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	result := TrySetupProjectBranches(runner, t.TempDir(), "not-a-repo", "demo")
 
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected warning for invalid starter repo")
 	}
-	assertNoRecordedCommand(t, runner.commands, "git", []string{"ls-remote", testProjectRepo})
-	assertNoRecordedGitSubcommand(t, runner.commands, "ls-remote")
-	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+	assertNoRecordedCommand(t, runner.Commands, "git", []string{"ls-remote", testProjectRepo})
+	assertNoRecordedGitSubcommand(t, runner.Commands, "ls-remote")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
 }
 
 func TestTrySetupProjectBranchesRemoteRemoveErrorContinuesToBranchDevelop(t *testing.T) {
-	runner := &fakeRunner{
-		runErrByCommand: map[string]error{
+	runner := &testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"git remote remove origin": errors.New("remove failed"),
 		},
 	}
@@ -231,12 +168,12 @@ func TestTrySetupProjectBranchesRemoteRemoveErrorContinuesToBranchDevelop(t *tes
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected warning for remote remove error")
 	}
-	assertRecordedCommand(t, runner.commands, "git", []string{"branch", "-M", "develop"})
+	assertRecordedCommand(t, runner.Commands, "git", []string{"branch", "-M", "develop"})
 }
 
 func TestTrySetupProjectBranchesBranchDevelopErrorContinuesToStarterBranch(t *testing.T) {
-	runner := &fakeRunner{
-		runErrByCommand: map[string]error{
+	runner := &testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"git branch -M develop": errors.New("branch failed"),
 		},
 	}
@@ -246,12 +183,12 @@ func TestTrySetupProjectBranchesBranchDevelopErrorContinuesToStarterBranch(t *te
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected warning for branch develop error")
 	}
-	assertRecordedCommand(t, runner.commands, "git", []string{"branch", "-f", "starter", "develop"})
+	assertRecordedCommand(t, runner.Commands, "git", []string{"branch", "-f", "starter", "develop"})
 }
 
 func TestTrySetupProjectBranchesUnavailableProjectRepoSkipsRemoteAddAndPush(t *testing.T) {
-	runner := &fakeRunner{
-		runErrByCommand: map[string]error{
+	runner := &testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"git ls-remote " + testProjectRepo: errors.New("repo missing"),
 		},
 	}
@@ -264,13 +201,13 @@ func TestTrySetupProjectBranchesUnavailableProjectRepoSkipsRemoteAddAndPush(t *t
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected warning for unavailable project repo")
 	}
-	assertRecordedCommand(t, runner.commands, "git", []string{"ls-remote", testProjectRepo})
-	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+	assertRecordedCommand(t, runner.Commands, "git", []string{"ls-remote", testProjectRepo})
+	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
 }
 
 func TestTrySetupProjectBranchesAvailableProjectRepoPushesBranches(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
 
@@ -280,13 +217,13 @@ func TestTrySetupProjectBranchesAvailableProjectRepoPushesBranches(t *testing.T)
 	if len(result.Warnings) != 0 {
 		t.Fatalf("expected no warnings, got %#v", result.Warnings)
 	}
-	assertRecordedCommand(t, runner.commands, "git", []string{"remote", "add", "origin", testProjectRepo})
-	assertRecordedCommand(t, runner.commands, "git", []string{"push", "-u", "origin", "develop", "starter"})
+	assertRecordedCommand(t, runner.Commands, "git", []string{"remote", "add", "origin", testProjectRepo})
+	assertRecordedCommand(t, runner.Commands, "git", []string{"push", "-u", "origin", "develop", "starter"})
 }
 
 func TestTrySetupProjectBranchesExistingRemoteDevelopSkipsPush(t *testing.T) {
-	runner := &fakeRunner{
-		captureOutputByCommand: map[string]string{
+	runner := &testutil.RecordingRunner{
+		Outputs: map[string]string{
 			"git ls-remote --heads " + testProjectRepo + " develop starter": "abc123\trefs/heads/develop\n",
 		},
 	}
@@ -299,14 +236,14 @@ func TestTrySetupProjectBranchesExistingRemoteDevelopSkipsPush(t *testing.T) {
 	if !containsWarning(result.Warnings, "already has develop or starter branch") {
 		t.Fatalf("expected existing branch warning, got %#v", result.Warnings)
 	}
-	assertRecordedCommand(t, runner.commands, "git", []string{"ls-remote", "--heads", testProjectRepo, "develop", "starter"})
-	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+	assertRecordedCommand(t, runner.Commands, "git", []string{"ls-remote", "--heads", testProjectRepo, "develop", "starter"})
+	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
 }
 
 func TestTrySetupProjectBranchesExistingRemoteStarterSkipsPush(t *testing.T) {
-	runner := &fakeRunner{
-		captureOutputByCommand: map[string]string{
+	runner := &testutil.RecordingRunner{
+		Outputs: map[string]string{
 			"git ls-remote --heads " + testProjectRepo + " develop starter": "abc123\trefs/heads/starter\n",
 		},
 	}
@@ -319,13 +256,13 @@ func TestTrySetupProjectBranchesExistingRemoteStarterSkipsPush(t *testing.T) {
 	if !containsWarning(result.Warnings, "already has develop or starter branch") {
 		t.Fatalf("expected existing branch warning, got %#v", result.Warnings)
 	}
-	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
 }
 
 func TestTrySetupProjectBranchesBranchInspectionErrorSkipsPush(t *testing.T) {
-	runner := &fakeRunner{
-		captureErrByCommand: map[string]error{
+	runner := &testutil.RecordingRunner{
+		CaptureErrByCommand: map[string]error{
 			"git ls-remote --heads " + testProjectRepo + " develop starter": errors.New("inspect failed"),
 		},
 	}
@@ -338,13 +275,13 @@ func TestTrySetupProjectBranchesBranchInspectionErrorSkipsPush(t *testing.T) {
 	if !containsWarning(result.Warnings, "Could not inspect project git branches") {
 		t.Fatalf("expected inspection warning, got %#v", result.Warnings)
 	}
-	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
-	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
 }
 
 func TestTrySetupProjectBranchesRemoteAddErrorSkipsPush(t *testing.T) {
-	runner := &fakeRunner{
-		runErrByCommand: map[string]error{
+	runner := &testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"git remote add origin " + testProjectRepo: errors.New("add failed"),
 		},
 	}
@@ -357,13 +294,13 @@ func TestTrySetupProjectBranchesRemoteAddErrorSkipsPush(t *testing.T) {
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected warning for remote add error")
 	}
-	assertRecordedCommand(t, runner.commands, "git", []string{"remote", "add", "origin", testProjectRepo})
-	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+	assertRecordedCommand(t, runner.Commands, "git", []string{"remote", "add", "origin", testProjectRepo})
+	assertNoRecordedGitSubcommand(t, runner.Commands, "push")
 }
 
 func TestTrySetupProjectBranchesPushErrorReportsNotPushed(t *testing.T) {
-	runner := &fakeRunner{
-		runErrByCommand: map[string]error{
+	runner := &testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"git push -u origin develop starter": errors.New("push failed"),
 		},
 	}
@@ -376,14 +313,14 @@ func TestTrySetupProjectBranchesPushErrorReportsNotPushed(t *testing.T) {
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected warning for push error")
 	}
-	assertRecordedCommand(t, runner.commands, "git", []string{"push", "-u", "origin", "develop", "starter"})
+	assertRecordedCommand(t, runner.Commands, "git", []string{"push", "-u", "origin", "develop", "starter"})
 }
 
-func assertRecordedCommand(t *testing.T, commands []recordedCommand, cmd string, args []string) {
+func assertRecordedCommand(t *testing.T, commands []testutil.RecordedCommand, cmd string, args []string) {
 	t.Helper()
 
 	for _, command := range commands {
-		if command.cmd == cmd && reflect.DeepEqual(command.args, args) {
+		if command.Cmd == cmd && reflect.DeepEqual(command.Args, args) {
 			return
 		}
 	}
@@ -391,24 +328,24 @@ func assertRecordedCommand(t *testing.T, commands []recordedCommand, cmd string,
 	t.Fatalf("expected command %s %v, got %#v", cmd, args, commands)
 }
 
-func assertNoRecordedCommand(t *testing.T, commands []recordedCommand, cmd string, args []string) {
+func assertNoRecordedCommand(t *testing.T, commands []testutil.RecordedCommand, cmd string, args []string) {
 	t.Helper()
 
 	for _, command := range commands {
-		if command.cmd == cmd && reflect.DeepEqual(command.args, args) {
+		if command.Cmd == cmd && reflect.DeepEqual(command.Args, args) {
 			t.Fatalf("did not expect command %s %v, got %#v", cmd, args, commands)
 		}
 	}
 }
 
-func assertNoRecordedGitSubcommand(t *testing.T, commands []recordedCommand, subcommand string) {
+func assertNoRecordedGitSubcommand(t *testing.T, commands []testutil.RecordedCommand, subcommand string) {
 	t.Helper()
 
 	for _, command := range commands {
-		if command.cmd != "git" {
+		if command.Cmd != "git" {
 			continue
 		}
-		got := strings.Join(command.args, " ")
+		got := strings.Join(command.Args, " ")
 		if got == subcommand || strings.HasPrefix(got, subcommand+" ") {
 			t.Fatalf("did not expect git %s, got %#v", subcommand, commands)
 		}
