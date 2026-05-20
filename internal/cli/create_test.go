@@ -133,12 +133,107 @@ func TestRunCreateCreatesProjectSkeletonFromSSHStarter(t *testing.T) {
 	assertHasCommand(t, runner.commands, "ssh", []string{"-p", "22", "user@192.168.0.1", "dynamic:home"})
 	assertHasCommand(t, runner.commands, "scp", []string{"-P", "22", "dynamic:remote-sql", "dynamic:local-sql"})
 	assertHasCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "demo"})
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "demo"), "git", []string{"remote", "remove", "origin"})
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "demo"), "git", []string{"branch", "-M", "develop"})
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "demo"), "git", []string{"branch", "-f", "starter", "develop"})
 	assertHasCommand(t, runner.commands, "lando", []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"})
 	assertHasCommand(t, runner.commands, "npm", []string{"ci", "--no-audit", "--no-fund"})
 	assertHasCommand(t, runner.commands, "npm", []string{"run", "build"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "demo"})
 	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 2)
 	assertNoCommand(t, runner.commands, "lando", []string{"wp", "eval", "echo get_option('stylesheet') ?: get_option('template');"})
+}
+
+func TestRunCreateSucceedsWhenProjectGitRepoUnavailable(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{
+		runErrByCommand: map[string]error{
+			"git ls-remote git@example.com:company/demo.git": fmt.Errorf("repo missing"),
+		},
+	}
+
+	err := runCreateWithRunner(CreateOptions{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	}, runner)
+	if err != nil {
+		t.Fatalf("RunCreate returned error: %v", err)
+	}
+
+	paths := create.NewProjectPaths(baseDir, "demo")
+	assertProjectSkeleton(t, paths)
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "demo"), "git", []string{"ls-remote", "git@example.com:company/demo.git"})
+	assertNoCommand(t, runner.commands, "git", []string{"push", "-u", "origin", "develop", "starter"})
+}
+
+func TestRunCreateSucceedsWhenProjectGitPushFails(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{
+		runErrByCommand: map[string]error{
+			"git push -u origin develop starter": fmt.Errorf("push failed"),
+		},
+	}
+
+	err := runCreateWithRunner(CreateOptions{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+	}, runner)
+	if err != nil {
+		t.Fatalf("RunCreate returned error: %v", err)
+	}
+
+	paths := create.NewProjectPaths(baseDir, "demo")
+	assertProjectSkeleton(t, paths)
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "demo"), "git", []string{"push", "-u", "origin", "develop", "starter"})
+}
+
+func TestRunCreateNoUploadsUsesSSHFallback(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+	runner := &fakeRunner{}
+
+	err := runCreateWithRunner(CreateOptions{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+		NoUploads:           true,
+	}, runner)
+	if err != nil {
+		t.Fatalf("RunCreate returned error: %v", err)
+	}
+
+	paths := create.NewProjectPaths(baseDir, "demo")
+	assertProjectSkeleton(t, paths)
+	if _, statErr := os.Stat(filepath.Join(paths.WPContent, "uploads", "2025", "07", "example.jpg")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected remote uploads fixture not to be extracted, stat error=%v", statErr)
+	}
+
+	htaccess, err := os.ReadFile(filepath.Join(paths.AppDir, ".htaccess"))
+	if err != nil {
+		t.Fatalf("expected htaccess fallback file: %v", err)
+	}
+	for _, expected := range []string{
+		"# BEGIN ToBA Uploads Fallback",
+		"RewriteCond %{HTTP_HOST} !^starter\\.example\\.test$ [NC]",
+		"RewriteRule ^wp-content/uploads/(.*)$ https://starter.example.test/wp-content/uploads/$1 [R=302,NE,L]",
+	} {
+		if !strings.Contains(string(htaccess), expected) {
+			t.Fatalf("expected htaccess to contain %q, got:\n%s", expected, string(htaccess))
+		}
+	}
+
+	assertHasCommand(t, runner.commands, "ssh", []string{"-p", "22", "user@192.168.0.1", "dynamic:no-uploads-home"})
+	assertNoCommand(t, runner.commands, "scp", []string{"-P", "22", "dynamic:remote-uploads", "dynamic:local-uploads"})
 }
 
 func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
@@ -195,6 +290,31 @@ func TestRunCreateUsesExistingProjectFolderForLocalBackups(t *testing.T) {
 	assertCommandCount(t, runner.commands, "lando", []string{"wp", "acorn", "key:generate"}, 0)
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "eval", "echo get_option('stylesheet') ?: get_option('template');"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "toet"})
+}
+
+func TestRunCreateNoUploadsRejectsLocalBackupMode(t *testing.T) {
+	baseDir := t.TempDir()
+	withWorkingDir(t, baseDir)
+
+	projectRoot := filepath.Join(baseDir, "demo")
+	writeCreateTestFile(t, filepath.Join(projectRoot, "backup-demo-db.sql"), "# Home URL: https://local-starter.test\nSELECT 1;\n")
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-plugins.zip"), map[string]string{"plugins/acf/acf.php": "<?php\n"}); err != nil {
+		t.Fatalf("failed to write plugins zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-uploads.zip"), map[string]string{"uploads/2026/example.txt": "uploaded"}); err != nil {
+		t.Fatalf("failed to write uploads zip: %v", err)
+	}
+	if err := writeZipFixture(filepath.Join(projectRoot, "backup-demo-themes.zip"), map[string]string{"themes/toet/style.css": "/* theme */"}); err != nil {
+		t.Fatalf("failed to write themes zip: %v", err)
+	}
+
+	err := runCreateWithRunner(CreateOptions{Name: "demo", NoUploads: true}, &fakeRunner{})
+	if err == nil {
+		t.Fatal("expected no-uploads local mode error")
+	}
+	if !strings.Contains(err.Error(), "--no-uploads is only supported with SSH starter data") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestRunCreateFailsWhenExistingProjectFolderHasNoUpdraftBackups(t *testing.T) {
@@ -405,6 +525,9 @@ func TestRunCreateNormalizesNameAndPrintsFinalSiteURL(t *testing.T) {
 	}
 
 	assertHasCommand(t, runner.commands, "git", []string{"clone", testStarterRepo, "test"})
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "test"), "git", []string{"remote", "remove", "origin"})
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "test"), "git", []string{"branch", "-M", "develop"})
+	assertHasCommandInDir(t, runner.commands, filepath.Join(paths.Themes, "test"), "git", []string{"branch", "-f", "starter", "develop"})
 	assertHasCommand(t, runner.commands, "lando", []string{"wp", "theme", "activate", "test"})
 
 	var installURL string
@@ -640,10 +763,11 @@ func TestBuildCreatePipelineOverlapsRemoteBootstrapWhenProjectDirDoesNotExist(t 
 	}, false)
 
 	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"collect-config"})
-	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir"})
+	assertNodeDependsOn(t, pipeline.Nodes, "clone-theme", []string{"project-dir"})
+	assertNodeDependsOn(t, pipeline.Nodes, "setup-theme-git", []string{"clone-theme"})
 	assertNodeDependsOn(t, pipeline.Nodes, "import-plugins", []string{"project-dir", "prepare-starter-data"})
-	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
-	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data", "install-theme", "import-plugins", "import-others"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "clone-theme", "import-plugins"})
+	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data", "clone-theme", "import-plugins", "import-others"})
 }
 
 func TestBuildCreatePipelineKeepsPrepareStarterDataAheadOfProjectDirForExistingProject(t *testing.T) {
@@ -661,8 +785,9 @@ func TestBuildCreatePipelineKeepsPrepareStarterDataAheadOfProjectDirForExistingP
 	}, false)
 
 	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"prepare-starter-data"})
-	assertNodeDependsOn(t, pipeline.Nodes, "install-theme", []string{"project-dir", "prepare-starter-data"})
-	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "install-theme", "import-plugins"})
+	assertNodeDependsOn(t, pipeline.Nodes, "clone-theme", []string{"project-dir", "prepare-starter-data"})
+	assertNodeDependsOn(t, pipeline.Nodes, "setup-theme-git", []string{"clone-theme"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "clone-theme", "import-plugins"})
 }
 
 func TestBuildCreatePipelineSetsSequentialModeWhenRequested(t *testing.T) {
@@ -695,6 +820,24 @@ func TestBuildCreatePipelineLeavesSequentialDisabledByDefault(t *testing.T) {
 	if pipeline.Sequential {
 		t.Fatal("expected sequential pipeline mode to be disabled")
 	}
+}
+
+func TestBuildCreatePipelineNoUploadsSkipsImportAndAddsFallback(t *testing.T) {
+	baseDir := t.TempDir()
+
+	pipeline := buildCreatePipeline(baseDir, create.ProjectConfig{
+		Name:                "demo",
+		PHPVersion:          "8.4",
+		StarterRepo:         testStarterRepo,
+		SSHTarget:           "user@192.168.0.1 -p 22",
+		RemoteWordPressRoot: testRemoteWordPressRoot,
+		NoUploads:           true,
+	}, false)
+
+	assertNoNode(t, pipeline.Nodes, "import-uploads")
+	assertNodeDependsOn(t, pipeline.Nodes, "configure-uploads-fallback", []string{"flush-rewrite-rules"})
+	assertNodeDependsOn(t, pipeline.Nodes, "refresh-theme-caches", []string{"generate-acorn-key", "clear-imported-caches", "configure-uploads-fallback", "import-others"})
+	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data", "clone-theme", "import-plugins", "import-others"})
 }
 
 func TestRunCreateWithIOLogsSequentialModeWhenEnabled(t *testing.T) {
@@ -791,6 +934,21 @@ func assertHasCommand(t *testing.T, commands []recordedCommand, cmd string, args
 	t.Fatalf("expected command %s %v, got %#v", cmd, args, commands)
 }
 
+func assertHasCommandInDir(t *testing.T, commands []recordedCommand, dir string, cmd string, args []string) {
+	t.Helper()
+
+	for _, command := range commands {
+		if command.dir != dir || command.cmd != cmd {
+			continue
+		}
+		if argsMatch(command.args, args) {
+			return
+		}
+	}
+
+	t.Fatalf("expected command in %s: %s %v, got %#v", dir, cmd, args, commands)
+}
+
 func assertNoCommand(t *testing.T, commands []recordedCommand, cmd string, args []string) {
 	t.Helper()
 
@@ -858,14 +1016,30 @@ func assertNodeDependsOn(t *testing.T, nodes []create.StepNode, id string, expec
 	t.Fatalf("expected node %s in %#v", id, nodes)
 }
 
+func assertNoNode(t *testing.T, nodes []create.StepNode, id string) {
+	t.Helper()
+
+	for _, node := range nodes {
+		if node.ID == id {
+			t.Fatalf("did not expect node %s in %#v", id, nodes)
+		}
+	}
+}
+
 func matchesDynamicArg(actual string, pattern string) bool {
 	switch pattern {
 	case "home":
 		return strings.Contains(actual, "wp84 option get home") && strings.Contains(actual, "'"+testRemoteWordPressRoot+"'")
+	case "no-uploads-home":
+		return strings.Contains(actual, "wp84 option get home") && strings.Contains(actual, "'"+testRemoteWordPressRoot+"'") && !strings.Contains(actual, "pid_uploads") && !strings.Contains(actual, "-i 'uploads/*'")
 	case "remote-sql":
 		return strings.HasPrefix(actual, "user@192.168.0.1:"+testRemoteWordPressRoot+"/") && strings.HasSuffix(actual, ".sql")
 	case "local-sql":
 		return strings.HasSuffix(actual, ".sql")
+	case "remote-uploads":
+		return strings.HasPrefix(actual, "user@192.168.0.1:"+testRemoteWordPressRoot+"/") && strings.HasSuffix(actual, "-uploads.zip")
+	case "local-uploads":
+		return strings.HasSuffix(actual, "-uploads.zip")
 	default:
 		return false
 	}

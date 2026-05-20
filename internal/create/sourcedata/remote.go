@@ -38,10 +38,15 @@ func prepareRemote(ctx *create.Context) error {
 			TempDir:      tempDir,
 			DatabasePath: filepath.Join(tempDir, "remote", "starter.sql"),
 			PluginsPaths: []string{filepath.Join(tempDir, "plugins", "starter-plugins.zip")},
-			UploadsPaths: []string{filepath.Join(tempDir, "uploads", "starter-uploads.zip")},
 			SourceURL:    "https://remote.example.test",
 		}
+		if !ctx.Config.NoUploads {
+			ctx.StarterData.UploadsPaths = []string{filepath.Join(tempDir, "uploads", "starter-uploads.zip")}
+		}
 		ctx.Logger.Info("Would fetch starter data over SSH from " + ctx.Config.SSHTarget)
+		if ctx.Config.NoUploads {
+			ctx.Logger.Info("Would skip remote uploads download and configure .htaccess fallback")
+		}
 		return nil
 	}
 
@@ -67,6 +72,7 @@ func prepareRemote(ctx *create.Context) error {
 			artifacts.remotePlugins,
 			artifacts.remoteUploads,
 			artifacts.remoteSourceURL,
+			!ctx.Config.NoUploads,
 		),
 	)
 	if err != nil {
@@ -90,8 +96,12 @@ func prepareRemote(ctx *create.Context) error {
 
 	ctx.Logger.Info("Downloading starter database over SSH")
 	ctx.Logger.Info("Downloading starter plugins over SSH")
-	ctx.Logger.Info("Downloading starter uploads over SSH")
-	if err := downloadRemoteFiles(ctx, target, artifacts.downloads()); err != nil {
+	if ctx.Config.NoUploads {
+		ctx.Logger.Info("Skipping starter uploads download; missing local uploads will fall back to " + sourceURL)
+	} else {
+		ctx.Logger.Info("Downloading starter uploads over SSH")
+	}
+	if err := downloadRemoteFiles(ctx, target, artifacts.downloads(!ctx.Config.NoUploads)); err != nil {
 		return err
 	}
 
@@ -100,8 +110,10 @@ func prepareRemote(ctx *create.Context) error {
 		TempDir:      tempDir,
 		DatabasePath: artifacts.localDatabase,
 		PluginsPaths: []string{artifacts.localPlugins},
-		UploadsPaths: []string{artifacts.localUploads},
 		SourceURL:    sourceURL,
+	}
+	if !ctx.Config.NoUploads {
+		ctx.StarterData.UploadsPaths = []string{artifacts.localUploads}
 	}
 	return nil
 }

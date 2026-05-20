@@ -47,13 +47,17 @@ func newRemoteArtifacts(tempDir string, remoteWordPressRoot string) remoteArtifa
 // downloads returns the remote files that must be copied back locally.
 //
 // Returns:
-// - the remote download definitions for database, plugins, and uploads
-func (a remoteArtifacts) downloads() []remoteDownload {
-	return []remoteDownload{
+// - the remote download definitions for database, plugins, and optionally uploads
+func (a remoteArtifacts) downloads(includeUploads bool) []remoteDownload {
+	downloads := []remoteDownload{
 		{name: "database", remotePath: a.remoteDatabase, localPath: a.localDatabase},
 		{name: "plugins", remotePath: a.remotePlugins, localPath: a.localPlugins},
-		{name: "uploads", remotePath: a.remoteUploads, localPath: a.localUploads},
 	}
+	if includeUploads {
+		downloads = append(downloads, remoteDownload{name: "uploads", remotePath: a.remoteUploads, localPath: a.localUploads})
+	}
+
+	return downloads
 }
 
 // cleanupRemoteArtifacts removes prepared files from the remote host after use.

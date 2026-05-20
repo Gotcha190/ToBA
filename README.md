@@ -30,7 +30,20 @@ ToBA udostępnia cztery komendy:
 Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
-- `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje.
+- `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje. Z flagą `--no-uploads` pomija uploads i konfiguruje fallback do zdalnej strony.
+
+## Zmiany w branchu 1.3
+
+Ten branch rozwija zachowanie `toba create` względem aktualnego `main`:
+
+- dodaje flagę `--no-uploads` dla SSH mode,
+- w SSH `--no-uploads` pomija zdalne pakowanie `uploads`, pobieranie przez `scp` i lokalny import uploads,
+- po flushu rewrite rules zapisuje blok `# BEGIN ToBA Uploads Fallback` w `app/.htaccess`, który przekierowuje brakujące `/wp-content/uploads/...` do źródłowej strony,
+- odrzuca `--no-uploads` w local backup mode, bo lokalne backupy nadal wymagają archiwów uploads,
+- rozdziela krok theme na klonowanie/przywracanie theme oraz niekrytyczną konfigurację git,
+- po sklonowaniu starter theme usuwa remote startera, tworzy lokalne branche `develop` i `starter`, a jeśli repo projektu wyprowadzone ze starter repo istnieje, dodaje je jako `origin` i próbuje wypchnąć oba branche,
+- traktuje konfigurację/push git theme jako warning-only, więc brak repo projektu albo błąd pusha nie zatrzymuje tworzenia środowiska,
+- przenosi helpery klonowania i konfiguracji repozytorium theme do `internal/git` oraz rozszerza testy CLI, pipeline, SSH starter data, fallbacku uploads i git setupu.
 
 ## Wymagania
 
@@ -81,7 +94,7 @@ go install .
 Wersjonowanie binarki:
 
 - release build pokazuje `toba version: <version>` ustawione podczas wydania
-- lokalny build z checkoutu repo pokazuje `toba version: 1.2.3 dev`
+- lokalny build z checkoutu repo pokazuje `toba version: 1.3.0 dev`
 
 ## Szybki start
 
@@ -156,7 +169,7 @@ www/example.com
 
 ```bash
 toba config
-toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--sequential]
+toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--no-uploads] [--sequential]
 toba doctor
 toba version
 ```
@@ -171,23 +184,26 @@ toba version
 4. generuje `.lando.yml`, `config/php.ini` i `wp-cli.yml`,
 5. uruchamia `lando start`,
 6. instaluje WordPress i tworzy `wp-config.php`,
-7. instaluje albo przywraca theme,
-8. buduje starter theme,
-9. przywraca plugins, uploads i opcjonalne others,
-10. przygotowuje i importuje database,
-11. wykrywa prefix tabel i w razie potrzeby aktualizuje `wp-config.php`,
-12. wykonuje `search-replace` na lokalną domenę,
-13. resetuje albo tworzy lokalnego administratora `tamago`,
-14. aktywuje theme,
-15. czyści cache i odświeża rewrite rules.
+7. klonuje starter theme albo przywraca theme z lokalnego backupu,
+8. w starter repo mode konfiguruje lokalne branche theme i opcjonalny remote projektu,
+9. buduje starter theme,
+10. przywraca plugins, uploads i opcjonalne others; z `--no-uploads` pomija import uploads,
+11. przygotowuje i importuje database,
+12. wykrywa prefix tabel i w razie potrzeby aktualizuje `wp-config.php`,
+13. wykonuje `search-replace` na lokalną domenę,
+14. resetuje albo tworzy lokalnego administratora `tamago`,
+15. aktywuje theme,
+16. czyści cache i odświeża rewrite rules,
+17. z `--no-uploads` zapisuje fallback uploads w `app/.htaccess`.
 
 Pipeline jest grafem zależności, więc niezależne kroki nie muszą czekać na zakończenie całej poprzedniej warstwy. Przykłady:
 
 - w SSH mode przygotowanie danych zdalnych może nakładać się na tworzenie lokalnego projektu,
 - import `plugins`, `uploads`, `others` i instalacja WordPressa mogą wykonywać się niezależnie po spełnieniu swoich zależności,
-- theme build może wystartować po dostępności Lando, theme i plugins,
+- theme build może wystartować po dostępności Lando, sklonowanego repo theme i plugins,
 - import bazy i pierwszy `wp search-replace` czekają na wymagane przywrócenie pluginów i innych zależnych plików,
-- końcowe kroki cache/rewrite uruchamiają się dopiero po wymaganych importach i aktywacji theme.
+- końcowe kroki cache/rewrite uruchamiają się dopiero po wymaganych importach i aktywacji theme,
+- w trybie `--no-uploads` odświeżenie cache theme czeka także na zapis fallbacku w `.htaccess`.
 
 Do debugowania i porównań zachowania można uruchomić:
 
@@ -230,6 +246,18 @@ Zasady:
 - zdalne pliki tymczasowe są usuwane po pobraniu albo przy błędzie przygotowania,
 - lokalne pliki starter data trafiają do tymczasowego katalogu `toba-starter-*`, który jest usuwany po zakończeniu `toba create`.
 
+Flaga `--no-uploads` działa tylko w SSH mode. Wtedy ToBA nadal pobiera URL źródłowy, bazę i plugins, ale nie tworzy ani nie pobiera archiwum `uploads`, pomija import uploads i po `lando wp rewrite flush --hard` zapisuje blok `# BEGIN ToBA Uploads Fallback` w `app/.htaccess`. Brakujące lokalne ścieżki `/wp-content/uploads/...` są przekierowywane HTTP 302 do źródłowej strony, a istniejące lokalnie pliki uploads nadal są serwowane lokalnie. W local backup mode `--no-uploads` kończy się błędem, bo lokalny backup nadal wymaga archiwów uploads.
+
+Po sklonowaniu starter theme w SSH mode ToBA wykonuje dodatkową konfigurację git w katalogu `app/wp-content/themes/<project-name>`:
+
+- usuwa remote `origin` wskazujący na starter,
+- zmienia bieżącą gałąź na `develop`,
+- tworzy albo odświeża gałąź `starter` na tym samym commicie,
+- wyprowadza URL repo projektu z `TOBA_STARTER_REPO` i nazwy projektu,
+- jeśli repo projektu odpowiada na `git ls-remote`, dodaje je jako `origin` i próbuje wypchnąć `develop` oraz `starter`.
+
+Ten etap jest celowo niekrytyczny. Błędy usuwania remote, tworzenia branchy, wykrywania repo projektu albo pusha są logowane jako ostrzeżenia i nie przerywają `toba create`.
+
 ## Przykłady
 
 Utworzenie projektu z lokalnego backupu plików Updrafta:
@@ -248,6 +276,12 @@ Utworzenie projektu przez SSH:
 ```bash
 toba config
 toba create demo --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
+```
+
+Utworzenie projektu przez SSH bez pobierania uploads:
+
+```bash
+toba create demo --no-uploads --starter-repo=git@github.com:org/repo.git --ssh-target='user@host -p 22' --remote-wordpress-root='www/example.com'
 ```
 
 Suchy przebieg bez zapisu plików:

@@ -109,9 +109,10 @@ func parseCreateOptions(args []string) (cli.CreateOptions, error) {
 	fs.StringVar(&opts.SSHTarget, "ssh-target", "", "SSH target in format 'user@host -p port'")
 	fs.StringVar(&opts.RemoteWordPressRoot, "remote-wordpress-root", "", "Remote WordPress root used by SSH starter data")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "Print planned actions without writing files")
+	fs.BoolVar(&opts.NoUploads, "no-uploads", false, "Skip SSH uploads import and redirect missing local uploads to the source site")
 	fs.BoolVar(&opts.Sequential, "sequential", false, "Run create pipeline without parallel node scheduling")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--sequential]")
+		fmt.Fprintln(os.Stderr, "Usage: toba create [project-name] [--php=8.4] [--starter-repo=git@github.com:org/repo.git] [--ssh-target='user@host -p port'] [--remote-wordpress-root='www/example.com'] [--dry-run] [--no-uploads] [--sequential]")
 	}
 
 	projectName := ""
