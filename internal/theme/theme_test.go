@@ -3,47 +3,13 @@ package theme
 import (
 	"errors"
 	"reflect"
-	"strings"
-	"sync"
 	"testing"
+
+	"github.com/gotcha190/toba/internal/testutil"
 )
 
-type recordedCommand struct {
-	dir  string
-	cmd  string
-	args []string
-}
-
-type fakeRunner struct {
-	mu       sync.Mutex
-	commands []recordedCommand
-	err      error
-	runErr   map[string]error
-}
-
-func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
-	r.mu.Lock()
-	r.commands = append(r.commands, recordedCommand{
-		dir:  dir,
-		cmd:  cmd,
-		args: append([]string(nil), args...),
-	})
-	r.mu.Unlock()
-	if r.runErr != nil {
-		key := strings.Join(append([]string{cmd}, args...), " ")
-		if err, ok := r.runErr[key]; ok {
-			return err
-		}
-	}
-	return r.err
-}
-
-func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
-	return "", r.err
-}
-
 func TestBuildRunsExpectedCommands(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 	themeDir := "/tmp/demo-theme"
 
 	err := Build(runner, themeDir)
@@ -51,40 +17,40 @@ func TestBuildRunsExpectedCommands(t *testing.T) {
 		t.Fatalf("Build returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  themeDir,
-			cmd:  "lando",
-			args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
+			Dir:  themeDir,
+			Cmd:  "lando",
+			Args: []string{"composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--no-progress"},
 		},
 		{
-			dir:  themeDir,
-			cmd:  "npm",
-			args: []string{"ci", "--no-audit", "--no-fund"},
+			Dir:  themeDir,
+			Cmd:  "npm",
+			Args: []string{"ci", "--no-audit", "--no-fund"},
 		},
 		{
-			dir:  themeDir,
-			cmd:  "npm",
-			args: []string{"run", "build"},
+			Dir:  themeDir,
+			Cmd:  "npm",
+			Args: []string{"run", "build"},
 		},
 	}
 
-	if len(runner.commands) != len(expected) {
-		t.Fatalf("unexpected commands count:\nexpected: %d\ngot: %d\ncommands: %#v", len(expected), len(runner.commands), runner.commands)
+	if len(runner.Commands) != len(expected) {
+		t.Fatalf("unexpected commands count:\nexpected: %d\ngot: %d\ncommands: %#v", len(expected), len(runner.Commands), runner.Commands)
 	}
 	for _, command := range expected {
-		if !containsRecordedCommand(runner.commands, command) {
-			t.Fatalf("expected command %#v in %#v", command, runner.commands)
+		if !containsRecordedCommand(runner.Commands, command) {
+			t.Fatalf("expected command %#v in %#v", command, runner.Commands)
 		}
 	}
-	if !reflect.DeepEqual(runner.commands[len(runner.commands)-1], expected[2]) {
-		t.Fatalf("unexpected final command:\nexpected: %#v\ngot: %#v", expected[2], runner.commands[len(runner.commands)-1])
+	if !reflect.DeepEqual(runner.Commands[len(runner.Commands)-1], expected[2]) {
+		t.Fatalf("unexpected final command:\nexpected: %#v\ngot: %#v", expected[2], runner.Commands[len(runner.Commands)-1])
 	}
 }
 
 func TestBuildFallsBackToNpmInstallWhenNpmCiFails(t *testing.T) {
-	runner := &fakeRunner{
-		runErr: map[string]error{
+	runner := &testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"npm ci --no-audit --no-fund": errors.New("broken lockfile"),
 		},
 	}
@@ -94,28 +60,28 @@ func TestBuildFallsBackToNpmInstallWhenNpmCiFails(t *testing.T) {
 		t.Fatalf("Build returned error: %v", err)
 	}
 
-	expectedFallback := recordedCommand{
-		dir:  themeDir,
-		cmd:  "npm",
-		args: []string{"install", "--no-audit", "--no-fund"},
+	expectedFallback := testutil.RecordedCommand{
+		Dir:  themeDir,
+		Cmd:  "npm",
+		Args: []string{"install", "--no-audit", "--no-fund"},
 	}
-	if !containsRecordedCommand(runner.commands, expectedFallback) {
-		t.Fatalf("expected fallback command %#v in %#v", expectedFallback, runner.commands)
+	if !containsRecordedCommand(runner.Commands, expectedFallback) {
+		t.Fatalf("expected fallback command %#v in %#v", expectedFallback, runner.Commands)
 	}
 
-	expectedBuild := recordedCommand{
-		dir:  themeDir,
-		cmd:  "npm",
-		args: []string{"run", "build"},
+	expectedBuild := testutil.RecordedCommand{
+		Dir:  themeDir,
+		Cmd:  "npm",
+		Args: []string{"run", "build"},
 	}
-	if !reflect.DeepEqual(runner.commands[len(runner.commands)-1], expectedBuild) {
-		t.Fatalf("unexpected final build command:\nexpected: %#v\ngot: %#v", expectedBuild, runner.commands[len(runner.commands)-1])
+	if !reflect.DeepEqual(runner.Commands[len(runner.Commands)-1], expectedBuild) {
+		t.Fatalf("unexpected final build command:\nexpected: %#v\ngot: %#v", expectedBuild, runner.Commands[len(runner.Commands)-1])
 	}
 }
 
 func TestBuildReturnsCommandError(t *testing.T) {
 	expectedErr := errors.New("boom")
-	runner := &fakeRunner{err: expectedErr}
+	runner := &testutil.RecordingRunner{Err: expectedErr}
 
 	err := Build(runner, "/tmp/demo-theme")
 	if !errors.Is(err, expectedErr) {
@@ -126,8 +92,8 @@ func TestBuildReturnsCommandError(t *testing.T) {
 func TestBuildReturnsFallbackErrorWhenNpmCiAndInstallFail(t *testing.T) {
 	ciErr := errors.New("ci failed")
 	installErr := errors.New("install failed")
-	runner := &fakeRunner{
-		runErr: map[string]error{
+	runner := &testutil.RecordingRunner{
+		RunErrByCommand: map[string]error{
 			"npm ci --no-audit --no-fund":      ciErr,
 			"npm install --no-audit --no-fund": installErr,
 		},
@@ -139,7 +105,7 @@ func TestBuildReturnsFallbackErrorWhenNpmCiAndInstallFail(t *testing.T) {
 	}
 }
 
-func containsRecordedCommand(commands []recordedCommand, expected recordedCommand) bool {
+func containsRecordedCommand(commands []testutil.RecordedCommand, expected testutil.RecordedCommand) bool {
 	for _, command := range commands {
 		if reflect.DeepEqual(command, expected) {
 			return true
@@ -150,27 +116,27 @@ func containsRecordedCommand(commands []recordedCommand, expected recordedComman
 }
 
 func TestGenerateAcornKeyRunsTwice(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &testutil.RecordingRunner{}
 
 	err := GenerateAcornKey(runner, "/tmp/demo")
 	if err != nil {
 		t.Fatalf("GenerateAcornKey returned error: %v", err)
 	}
 
-	expected := []recordedCommand{
+	expected := []testutil.RecordedCommand{
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "key:generate"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "acorn", "key:generate"},
 		},
 		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "acorn", "key:generate"},
+			Dir:  "/tmp/demo",
+			Cmd:  "lando",
+			Args: []string{"wp", "acorn", "key:generate"},
 		},
 	}
 
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.commands)
+	if !reflect.DeepEqual(runner.Commands, expected) {
+		t.Fatalf("unexpected commands:\nexpected: %#v\ngot: %#v", expected, runner.Commands)
 	}
 }
