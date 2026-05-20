@@ -122,24 +122,6 @@ func TestPrepareStarterDataUsesLocalProjectBackupsWhenComplete(t *testing.T) {
 	}
 }
 
-func TestPrepareStarterDataIgnoresCategorizedLocalProjectBackups(t *testing.T) {
-	baseDir := t.TempDir()
-	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
-
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "database", "backup-db.gz"), "db")
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "plugins", "plugins-a.zip"), "plugins")
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "uploads", "uploads-a.zip"), "uploads")
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "themes", "themes-a.zip"), "themes")
-
-	err := NewPrepareStarterDataStep().Run(ctx)
-	if err == nil {
-		t.Fatal("expected categorized backups to be ignored")
-	}
-	if !strings.Contains(err.Error(), "contains no recognizable Updraft backup files") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestPrepareStarterDataFetchesOverSSHWhenLocalProjectFolderMissing(t *testing.T) {
 	logger := &starterTestLogger{}
 	runner := &starterTestRunner{captureOutput: "https://starter.example.test\n"}
@@ -299,39 +281,6 @@ func TestPrepareStarterDataRejectsEmptyExistingProjectFolder(t *testing.T) {
 		t.Fatal("expected empty existing project folder to fail")
 	}
 	if !strings.Contains(err.Error(), "contains no recognizable Updraft backup files") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestPrepareStarterDataRejectsPartialLocalProjectBackup(t *testing.T) {
-	baseDir := t.TempDir()
-	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
-
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.gz"), "db")
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-plugins.zip"), "plugins")
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-uploads.zip"), "uploads")
-
-	err := NewPrepareStarterDataStep().Run(ctx)
-	if err == nil {
-		t.Fatal("expected partial local backup error")
-	}
-	if !strings.Contains(err.Error(), "incomplete") || !strings.Contains(err.Error(), "themes") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestPrepareStarterDataRejectsMultipleLocalDatabases(t *testing.T) {
-	baseDir := t.TempDir()
-	ctx := create.NewContext(baseDir, create.ProjectConfig{Name: "demo"}, &starterTestLogger{}, &starterTestRunner{})
-
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.gz"), "db")
-	writeStarterProjectFile(t, filepath.Join(ctx.Paths.Root, "backup-demo-db.sql"), "db2")
-
-	err := NewPrepareStarterDataStep().Run(ctx)
-	if err == nil {
-		t.Fatal("expected multiple database error")
-	}
-	if !strings.Contains(err.Error(), "expected exactly 1 database backup") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

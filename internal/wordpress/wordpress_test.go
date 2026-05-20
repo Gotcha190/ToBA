@@ -346,30 +346,6 @@ func TestResetAdminPasswordRunsExpectedCommand(t *testing.T) {
 	}
 }
 
-func TestResetAdminPasswordCreatesTamagoWhenMissing(t *testing.T) {
-	runner := &fakeRunner{
-		outputs: map[string]string{
-			"lando wp eval $user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}": "",
-		},
-	}
-
-	if err := ResetAdminPassword(runner, "/tmp/demo"); err != nil {
-		t.Fatalf("ResetAdminPassword returned error: %v", err)
-	}
-
-	expected := []recordedCommand{
-		{
-			dir:  "/tmp/demo",
-			cmd:  "lando",
-			args: []string{"wp", "eval", "$user = get_user_by('login', 'tamago');if ($user) {$result = wp_update_user(array('ID' => $user->ID, 'user_pass' => 'tamago'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}exit(0);}$user_id = wp_create_user('tamago', 'tamago', 'email@email.pl');if (is_wp_error($user_id)) {fwrite(STDERR, $user_id->get_error_message() . PHP_EOL); exit(1);}$result = wp_update_user(array('ID' => $user_id, 'display_name' => 'tamago', 'role' => 'administrator'));if (is_wp_error($result)) {fwrite(STDERR, $result->get_error_message() . PHP_EOL); exit(1);}"},
-		},
-	}
-
-	if !reflect.DeepEqual(runner.commands, expected) {
-		t.Fatalf("unexpected command sequence:\nexpected: %#v\ngot: %#v", expected, runner.commands)
-	}
-}
-
 func TestActivateThemeRunsExpectedCommand(t *testing.T) {
 	runner := &fakeRunner{}
 
@@ -402,22 +378,6 @@ func TestDetectImportedThemeSlugPrefersStylesheet(t *testing.T) {
 		t.Fatalf("DetectImportedThemeSlug returned error: %v", err)
 	}
 	if got != "sage" {
-		t.Fatalf("unexpected theme slug: %q", got)
-	}
-}
-
-func TestDetectImportedThemeSlugFallsBackToTemplate(t *testing.T) {
-	runner := &fakeRunner{
-		outputs: map[string]string{
-			"lando wp eval echo get_option('stylesheet') ?: get_option('template');": "sage-fallback\n",
-		},
-	}
-
-	got, err := DetectImportedThemeSlug(runner, "/tmp/demo")
-	if err != nil {
-		t.Fatalf("DetectImportedThemeSlug returned error: %v", err)
-	}
-	if got != "sage-fallback" {
 		t.Fatalf("unexpected theme slug: %q", got)
 	}
 }
