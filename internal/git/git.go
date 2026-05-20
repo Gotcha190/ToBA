@@ -118,8 +118,8 @@ func ProjectRepoURLFromStarter(starterRepo string, projectName string) (string, 
 	return "", fmt.Errorf("unsupported starter repo URL format: %s", starterRepo)
 }
 
-// TrySetupProjectBranches prepares local develop/starter branches and, when
-// available, pushes them to the project repository derived from starterRepo.
+// TrySetupProjectBranches prepares local develop/starter branches and pushes
+// them only to an available project repository without protected branches.
 //
 // Parameters:
 // - runner: command runner used to launch git
@@ -153,6 +153,15 @@ func TrySetupProjectBranches(runner create.CommandRunner, repoDir string, starte
 		result.Warnings = append(result.Warnings, "Project git repo is not available yet; skipping branch push: "+repoURL)
 		return result
 	}
+	branchesExist, err := RemoteProjectBranchesExist(runner, repoDir, repoURL, "develop", "starter")
+	if err != nil {
+		result.Warnings = append(result.Warnings, "Could not inspect project git branches; skipping branch push: "+err.Error())
+		return result
+	}
+	if branchesExist {
+		result.Warnings = append(result.Warnings, "Project git repo already has develop or starter branch; skipping branch push: "+repoURL)
+		return result
+	}
 	if err := runner.Run(repoDir, "git", "remote", "add", "origin", repoURL); err != nil {
 		result.Warnings = append(result.Warnings, "Could not add project git remote: "+err.Error())
 		return result
@@ -164,4 +173,28 @@ func TrySetupProjectBranches(runner create.CommandRunner, repoDir string, starte
 
 	result.Pushed = true
 	return result
+}
+
+// RemoteProjectBranchesExist reports whether any protected project branch
+// already exists on the remote project repository.
+//
+// Parameters:
+// - runner: command runner used to inspect the remote repository
+// - repoDir: local repository directory used as command working directory
+// - repoURL: remote project repository URL
+// - branches: branch names that must not be advanced automatically
+//
+// Returns:
+// - true when at least one branch exists on the remote repository
+// - an error when remote branch inspection fails
+func RemoteProjectBranchesExist(runner create.CommandRunner, repoDir string, repoURL string, branches ...string) (bool, error) {
+	args := []string{"ls-remote", "--heads", repoURL}
+	args = append(args, branches...)
+
+	output, err := runner.CaptureOutput(repoDir, "git", args...)
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(output) != "", nil
 }

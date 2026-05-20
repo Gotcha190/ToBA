@@ -22,10 +22,12 @@ type recordedCommand struct {
 }
 
 type fakeRunner struct {
-	mu              sync.Mutex
-	commands        []recordedCommand
-	err             error
-	runErrByCommand map[string]error
+	mu                     sync.Mutex
+	commands               []recordedCommand
+	err                    error
+	runErrByCommand        map[string]error
+	captureOutputByCommand map[string]string
+	captureErrByCommand    map[string]error
 }
 
 func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
@@ -53,6 +55,26 @@ func (r *fakeRunner) Run(dir string, cmd string, args ...string) error {
 }
 
 func (r *fakeRunner) CaptureOutput(dir string, cmd string, args ...string) (string, error) {
+	r.mu.Lock()
+	r.commands = append(r.commands, recordedCommand{
+		dir:  dir,
+		cmd:  cmd,
+		args: append([]string(nil), args...),
+	})
+	r.mu.Unlock()
+
+	key := cmd + " " + strings.Join(args, " ")
+	if r.captureErrByCommand != nil {
+		if err, ok := r.captureErrByCommand[key]; ok {
+			return "", err
+		}
+	}
+	if r.captureOutputByCommand != nil {
+		if output, ok := r.captureOutputByCommand[key]; ok {
+			return output, nil
+		}
+	}
+
 	return "", r.err
 }
 
@@ -262,6 +284,64 @@ func TestTrySetupProjectBranchesAvailableProjectRepoPushesBranches(t *testing.T)
 	assertRecordedCommand(t, runner.commands, "git", []string{"push", "-u", "origin", "develop", "starter"})
 }
 
+func TestTrySetupProjectBranchesExistingRemoteDevelopSkipsPush(t *testing.T) {
+	runner := &fakeRunner{
+		captureOutputByCommand: map[string]string{
+			"git ls-remote --heads " + testProjectRepo + " develop starter": "abc123\trefs/heads/develop\n",
+		},
+	}
+
+	result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
+
+	if result.Pushed {
+		t.Fatal("expected Pushed to be false")
+	}
+	if !containsWarning(result.Warnings, "already has develop or starter branch") {
+		t.Fatalf("expected existing branch warning, got %#v", result.Warnings)
+	}
+	assertRecordedCommand(t, runner.commands, "git", []string{"ls-remote", "--heads", testProjectRepo, "develop", "starter"})
+	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+}
+
+func TestTrySetupProjectBranchesExistingRemoteStarterSkipsPush(t *testing.T) {
+	runner := &fakeRunner{
+		captureOutputByCommand: map[string]string{
+			"git ls-remote --heads " + testProjectRepo + " develop starter": "abc123\trefs/heads/starter\n",
+		},
+	}
+
+	result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
+
+	if result.Pushed {
+		t.Fatal("expected Pushed to be false")
+	}
+	if !containsWarning(result.Warnings, "already has develop or starter branch") {
+		t.Fatalf("expected existing branch warning, got %#v", result.Warnings)
+	}
+	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+}
+
+func TestTrySetupProjectBranchesBranchInspectionErrorSkipsPush(t *testing.T) {
+	runner := &fakeRunner{
+		captureErrByCommand: map[string]error{
+			"git ls-remote --heads " + testProjectRepo + " develop starter": errors.New("inspect failed"),
+		},
+	}
+
+	result := TrySetupProjectBranches(runner, t.TempDir(), testStarterRepo, "demo")
+
+	if result.Pushed {
+		t.Fatal("expected Pushed to be false")
+	}
+	if !containsWarning(result.Warnings, "Could not inspect project git branches") {
+		t.Fatalf("expected inspection warning, got %#v", result.Warnings)
+	}
+	assertNoRecordedGitSubcommand(t, runner.commands, "remote add")
+	assertNoRecordedGitSubcommand(t, runner.commands, "push")
+}
+
 func TestTrySetupProjectBranchesRemoteAddErrorSkipsPush(t *testing.T) {
 	runner := &fakeRunner{
 		runErrByCommand: map[string]error{
@@ -333,6 +413,16 @@ func assertNoRecordedGitSubcommand(t *testing.T, commands []recordedCommand, sub
 			t.Fatalf("did not expect git %s, got %#v", subcommand, commands)
 		}
 	}
+}
+
+func containsWarning(warnings []string, fragment string) bool {
+	for _, warning := range warnings {
+		if strings.Contains(warning, fragment) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func assertCodedError(t *testing.T, err error, expectedCode string) {
