@@ -32,9 +32,9 @@ Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
 - `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje. Z flagą `--no-uploads` pomija uploads i konfiguruje fallback do zdalnej strony.
 
-## Zmiany w branchu 1.3
+## Zmiany w wersji 1.3
 
-Ten branch rozwija zachowanie `toba create` względem aktualnego `main`:
+Ta wersja rozwija zachowanie `toba create` względem aktualnego `main`:
 
 - dodaje flagę `--no-uploads` dla SSH mode,
 - w SSH `--no-uploads` pomija zdalne pakowanie `uploads`, pobieranie przez `scp` i lokalny import uploads,
