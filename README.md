@@ -32,16 +32,22 @@ Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
 - `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje. Z flagą `--no-uploads` pomija uploads i konfiguruje fallback do zdalnej strony.
 
-## Zmiany w wersji 1.3
+## Zmiany w wersji 1.3.1
 
-Ta wersja rozwija zachowanie `toba create` względem aktualnego `main`:
+Ta wersja poprawia zachowanie git setupu po `1.3.0`:
+
+- jeśli repo projektu ma już zdalny branch `develop` albo `starter`, ToBA nie dodaje `origin` i nie wypycha branchy,
+- zdalne branche `develop` i `starter` nie są już automatycznie przesuwane, nawet gdy push byłby fast-forward,
+- jeśli nie da się sprawdzić zdalnych branchy, ToBA pomija push konserwatywnie i loguje ostrzeżenie.
+
+Wersja `1.3.0` dodała:
 
 - dodaje flagę `--no-uploads` dla SSH mode,
 - w SSH `--no-uploads` pomija zdalne pakowanie `uploads`, pobieranie przez `scp` i lokalny import uploads,
 - po flushu rewrite rules zapisuje blok `# BEGIN ToBA Uploads Fallback` w `app/.htaccess`, który przekierowuje brakujące `/wp-content/uploads/...` do źródłowej strony,
 - odrzuca `--no-uploads` w local backup mode, bo lokalne backupy nadal wymagają archiwów uploads,
 - rozdziela krok theme na klonowanie/przywracanie theme oraz niekrytyczną konfigurację git,
-- po sklonowaniu starter theme usuwa remote startera, tworzy lokalne branche `develop` i `starter`, a jeśli repo projektu wyprowadzone ze starter repo istnieje, dodaje je jako `origin` i próbuje wypchnąć oba branche,
+- po sklonowaniu starter theme usuwa remote startera, tworzy lokalne branche `develop` i `starter`, a jeśli repo projektu wyprowadzone ze starter repo istnieje i nie ma jeszcze branchy `develop` ani `starter`, dodaje je jako `origin` i wypycha oba branche,
 - traktuje konfigurację/push git theme jako warning-only, więc brak repo projektu albo błąd pusha nie zatrzymuje tworzenia środowiska,
 - przenosi helpery klonowania i konfiguracji repozytorium theme do `internal/git` oraz rozszerza testy CLI, pipeline, SSH starter data, fallbacku uploads i git setupu.
 
@@ -94,7 +100,7 @@ go install .
 Wersjonowanie binarki:
 
 - release build pokazuje `toba version: <version>` ustawione podczas wydania
-- lokalny build z checkoutu repo pokazuje `toba version: 1.3.0 dev`
+- lokalny build z checkoutu repo pokazuje `toba version: 1.3.1 dev`
 
 ## Szybki start
 
@@ -254,9 +260,9 @@ Po sklonowaniu starter theme w SSH mode ToBA wykonuje dodatkową konfigurację g
 - zmienia bieżącą gałąź na `develop`,
 - tworzy albo odświeża gałąź `starter` na tym samym commicie,
 - wyprowadza URL repo projektu z `TOBA_STARTER_REPO` i nazwy projektu,
-- jeśli repo projektu odpowiada na `git ls-remote`, dodaje je jako `origin` i próbuje wypchnąć `develop` oraz `starter`.
+- jeśli repo projektu odpowiada na `git ls-remote` i nie ma jeszcze branchy `develop` ani `starter`, dodaje je jako `origin` i wypycha `develop` oraz `starter`.
 
-Ten etap jest celowo niekrytyczny. Błędy usuwania remote, tworzenia branchy, wykrywania repo projektu albo pusha są logowane jako ostrzeżenia i nie przerywają `toba create`.
+Ten etap jest celowo niekrytyczny. Błędy usuwania remote, tworzenia branchy, wykrywania repo projektu, sprawdzania branchy albo pusha są logowane jako ostrzeżenia i nie przerywają `toba create`. Jeśli repo projektu ma już `develop` albo `starter`, ToBA nie dodaje remote i nie wypycha branchy, żeby nie przesuwać historii istniejącego projektu.
 
 ## Przykłady
 

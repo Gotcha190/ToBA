@@ -32,14 +32,14 @@ func TestResolvedVersionUsesBuildInfoWhenReleaseVersionIsMissing(t *testing.T) {
 	originalReadBuildInfo := readBuildInfo
 	releaseVersion = ""
 	readBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{Main: debug.Module{Version: "v1.3.0"}}, true
+		return &debug.BuildInfo{Main: debug.Module{Version: "v1.3.1"}}, true
 	}
 	t.Cleanup(func() {
 		releaseVersion = originalReleaseVersion
 		readBuildInfo = originalReadBuildInfo
 	})
 
-	if got := resolvedVersion(); got != "1.3.0" {
+	if got := resolvedVersion(); got != "1.3.1" {
 		t.Fatalf("expected build info version, got %q", got)
 	}
 }
