@@ -9,22 +9,58 @@ import (
 	"testing"
 )
 
-func repoRoot(t *testing.T) string {
-	t.Helper()
+var cliBinary string
 
+func repoRoot() (string, error) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("failed to resolve test file path")
+		return "", os.ErrNotExist
 	}
 
-	return filepath.Dir(file)
+	return filepath.Dir(file), nil
+}
+
+func TestMain(m *testing.M) {
+	root, err := repoRoot()
+	if err != nil {
+		os.Exit(1)
+	}
+
+	binDir, err := os.MkdirTemp("", "toba-e2e-*")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer func() {
+		_ = os.RemoveAll(binDir)
+	}()
+
+	binaryName := "toba-e2e"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	cliBinary = filepath.Join(binDir, binaryName)
+
+	build := exec.Command("go", "build", "-o", cliBinary, ".")
+	build.Dir = root
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		os.Exit(1)
+	}
+
+	os.Exit(m.Run())
 }
 
 func runCLI(t *testing.T, env []string, args ...string) (string, error) {
 	t.Helper()
 
-	cmd := exec.Command("go", append([]string{"run", "."}, args...)...)
-	cmd.Dir = repoRoot(t)
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal("failed to resolve repo root")
+	}
+
+	cmd := exec.Command(cliBinary, args...)
+	cmd.Dir = root
 	cmd.Env = append(os.Environ(), env...)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
@@ -81,8 +117,13 @@ func TestCLIEndToEndCreateDryRun(t *testing.T) {
 		t.Fatalf("failed to write global env: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", ".", "create", "demo", "--dry-run")
-	cmd.Dir = repoRoot(t)
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal("failed to resolve repo root")
+	}
+
+	cmd := exec.Command(cliBinary, "create", "demo", "--dry-run")
+	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+configHome, "HOME="+workDir)
 	outputBytes, err := cmd.CombinedOutput()
 	output := string(outputBytes)
