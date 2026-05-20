@@ -23,17 +23,17 @@ func buildCreatePipeline(baseDir string, config create.ProjectConfig, sequential
 	prepareStarterDataStep := create.Step(steps.NewPrepareStarterDataStep())
 	prepareStarterDataDeps := []string{"collect-config"}
 	projectDirDeps := []string{"prepare-starter-data"}
-	installThemeDeps := []string{"project-dir", "prepare-starter-data"}
+	cloneThemeDeps := []string{"project-dir", "prepare-starter-data"}
 	importPluginsDeps := []string{"project-dir", "prepare-starter-data"}
 	importUploadsDeps := []string{"project-dir", "prepare-starter-data"}
 	importOthersDeps := []string{"project-dir", "prepare-starter-data"}
-	importDatabaseDeps := []string{"install-wordpress", "prepare-starter-data", "install-theme", "import-plugins", "import-others"}
+	importDatabaseDeps := []string{"install-wordpress", "prepare-starter-data", "clone-theme", "import-plugins", "import-others"}
 	refreshThemeCachesDeps := []string{"generate-acorn-key", "clear-imported-caches", "flush-rewrite-rules", "import-others"}
 
 	if remoteBootstrapParallel {
 		prepareStarterDataStep = forcedRemotePrepareStarterDataStep{base: steps.NewPrepareStarterDataStep()}
 		projectDirDeps = []string{"collect-config"}
-		installThemeDeps = []string{"project-dir"}
+		cloneThemeDeps = []string{"project-dir"}
 	}
 
 	nodes := []create.StepNode{
@@ -42,7 +42,8 @@ func buildCreatePipeline(baseDir string, config create.ProjectConfig, sequential
 		{ID: "project-dir", Step: steps.NewProjectDirStep(), DependsOn: projectDirDeps},
 		{ID: "generate-lando-config", Step: steps.NewGenerateLandoConfigStep(), DependsOn: []string{"project-dir"}},
 		{ID: "start-lando", Step: steps.NewStartLandoStep(), DependsOn: []string{"generate-lando-config"}},
-		{ID: "install-theme", Step: steps.NewInstallThemeStep(), DependsOn: installThemeDeps},
+		{ID: "clone-theme", Step: steps.NewCloneStarterThemeStep(), DependsOn: cloneThemeDeps},
+		{ID: "setup-theme-git", Step: steps.NewSetupThemeGitStep(), DependsOn: []string{"clone-theme"}},
 		{ID: "import-plugins", Step: steps.NewImportPluginsStep(), DependsOn: importPluginsDeps},
 	}
 	if !config.NoUploads {
@@ -51,10 +52,10 @@ func buildCreatePipeline(baseDir string, config create.ProjectConfig, sequential
 	nodes = append(nodes,
 		create.StepNode{ID: "import-others", Step: steps.NewImportOthersStep(), DependsOn: importOthersDeps},
 		create.StepNode{ID: "install-wordpress", Step: steps.NewInstallWordPressStep(), DependsOn: []string{"start-lando"}},
-		create.StepNode{ID: "build-theme", Step: steps.NewBuildThemeStep(), DependsOn: []string{"start-lando", "install-theme", "import-plugins"}},
+		create.StepNode{ID: "build-theme", Step: steps.NewBuildThemeStep(), DependsOn: []string{"start-lando", "clone-theme", "setup-theme-git", "import-plugins"}},
 		create.StepNode{ID: "import-database", Step: steps.NewImportDatabaseStep(), DependsOn: importDatabaseDeps},
 		create.StepNode{ID: "reset-admin-password", Step: steps.NewResetAdminPasswordStep(), DependsOn: []string{"import-database"}},
-		create.StepNode{ID: "activate-theme", Step: steps.NewActivateThemeStep(), DependsOn: []string{"import-database", "install-theme", "build-theme"}},
+		create.StepNode{ID: "activate-theme", Step: steps.NewActivateThemeStep(), DependsOn: []string{"import-database", "clone-theme", "build-theme"}},
 		create.StepNode{ID: "generate-acorn-key", Step: steps.NewGenerateAcornKeyStep(), DependsOn: []string{"activate-theme"}},
 		create.StepNode{ID: "clear-imported-caches", Step: steps.NewClearImportedCachesStep(), DependsOn: []string{"import-database"}},
 		create.StepNode{ID: "flush-rewrite-rules", Step: steps.NewFlushRewriteRulesStep(), DependsOn: []string{"activate-theme"}},
