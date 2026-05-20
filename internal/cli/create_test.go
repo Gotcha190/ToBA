@@ -766,7 +766,7 @@ func TestBuildCreatePipelineOverlapsRemoteBootstrapWhenProjectDirDoesNotExist(t 
 	assertNodeDependsOn(t, pipeline.Nodes, "clone-theme", []string{"project-dir"})
 	assertNodeDependsOn(t, pipeline.Nodes, "setup-theme-git", []string{"clone-theme"})
 	assertNodeDependsOn(t, pipeline.Nodes, "import-plugins", []string{"project-dir", "prepare-starter-data"})
-	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "clone-theme", "setup-theme-git", "import-plugins"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "clone-theme", "import-plugins"})
 	assertNodeDependsOn(t, pipeline.Nodes, "import-database", []string{"install-wordpress", "prepare-starter-data", "clone-theme", "import-plugins", "import-others"})
 }
 
@@ -787,7 +787,7 @@ func TestBuildCreatePipelineKeepsPrepareStarterDataAheadOfProjectDirForExistingP
 	assertNodeDependsOn(t, pipeline.Nodes, "project-dir", []string{"prepare-starter-data"})
 	assertNodeDependsOn(t, pipeline.Nodes, "clone-theme", []string{"project-dir", "prepare-starter-data"})
 	assertNodeDependsOn(t, pipeline.Nodes, "setup-theme-git", []string{"clone-theme"})
-	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "clone-theme", "setup-theme-git", "import-plugins"})
+	assertNodeDependsOn(t, pipeline.Nodes, "build-theme", []string{"start-lando", "clone-theme", "import-plugins"})
 }
 
 func TestBuildCreatePipelineSetsSequentialModeWhenRequested(t *testing.T) {

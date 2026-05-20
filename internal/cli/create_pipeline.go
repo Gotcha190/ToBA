@@ -52,7 +52,7 @@ func buildCreatePipeline(baseDir string, config create.ProjectConfig, sequential
 	nodes = append(nodes,
 		create.StepNode{ID: "import-others", Step: steps.NewImportOthersStep(), DependsOn: importOthersDeps},
 		create.StepNode{ID: "install-wordpress", Step: steps.NewInstallWordPressStep(), DependsOn: []string{"start-lando"}},
-		create.StepNode{ID: "build-theme", Step: steps.NewBuildThemeStep(), DependsOn: []string{"start-lando", "clone-theme", "setup-theme-git", "import-plugins"}},
+		create.StepNode{ID: "build-theme", Step: steps.NewBuildThemeStep(), DependsOn: []string{"start-lando", "clone-theme", "import-plugins"}},
 		create.StepNode{ID: "import-database", Step: steps.NewImportDatabaseStep(), DependsOn: importDatabaseDeps},
 		create.StepNode{ID: "reset-admin-password", Step: steps.NewResetAdminPasswordStep(), DependsOn: []string{"import-database"}},
 		create.StepNode{ID: "activate-theme", Step: steps.NewActivateThemeStep(), DependsOn: []string{"import-database", "clone-theme", "build-theme"}},
