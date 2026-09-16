@@ -32,6 +32,18 @@ Podczas `toba create` narzędzie działa w jednym z dwóch trybów:
 - `local backup mode`: używa istniejącego folderu `./<project-name>` z kompletem plików Updraft.
 - `SSH mode`: pobiera starter database, plugins i uploads przez SSH, jeśli lokalny folder projektu nie istnieje. Z flagą `--no-uploads` pomija uploads i konfiguruje fallback do zdalnej strony.
 
+## Zmiany w wersji 1.3.2
+
+Wersja stabilizuje tworzenie projektów na dotychczasowym starterze:
+
+- usuwa wyścigi danych pomiędzy przygotowaniem danych SSH a klonowaniem i konfiguracją git motywu, zachowując równoległe wykonanie,
+- poprawia sprzątanie zdalnych plików po błędzie lub sygnale przerwania przygotowania danych, także dla względnego katalogu WordPressa,
+- przed usunięciem zdalnych artefaktów kończy procesy przygotowujące dane i czeka na ich zakończenie,
+- zapewnia, że `--dry-run` nie usuwa istniejących katalogów tymczasowych,
+- izoluje katalogi tymczasowe testów, aby nie usuwały danych innych uruchomień ToBA.
+
+Obsługa nowego startera z paczkami Repmana, kreator interaktywny i wybór projektów z firmowego GitHuba pozostają zakresem przyszłej wersji 2.0.
+
 ## Zmiany w wersji 1.3.1
 
 Ta wersja poprawia zachowanie git setupu po `1.3.0`:
@@ -100,7 +112,7 @@ go install .
 Wersjonowanie binarki:
 
 - release build pokazuje `toba version: <version>` ustawione podczas wydania
-- lokalny build z checkoutu repo pokazuje `toba version: 1.3.1 dev`
+- lokalny build z checkoutu repo pokazuje `toba version: 1.3.2 dev`
 
 ## Szybki start
 

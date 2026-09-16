@@ -275,6 +275,17 @@ func TestRunCreateFailsWhenExistingProjectFolderContainsProjectMarkers(t *testin
 func TestRunCreateDryRunDoesNotWriteFiles(t *testing.T) {
 	baseDir := t.TempDir()
 	withWorkingDir(t, baseDir)
+	tempRoot := t.TempDir()
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, tempRoot)
+	}
+	marker := filepath.Join(tempRoot, "toba-starter-dry-run", "keep.txt")
+	if err := os.MkdirAll(filepath.Dir(marker), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("existing data"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	runner := &fakeRunner{}
 
 	err := runCreateWithRunner(CreateOptions{Name: "demo", StarterRepo: testStarterRepo, SSHTarget: "user@192.168.0.1 -p 22", RemoteWordPressRoot: testRemoteWordPressRoot, DryRun: true}, runner)
@@ -282,6 +293,9 @@ func TestRunCreateDryRunDoesNotWriteFiles(t *testing.T) {
 		t.Fatalf("RunCreate returned error in dry-run mode: %v", err)
 	}
 
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "existing data" {
+		t.Fatalf("dry-run changed existing temp data: %q, %v", data, err)
+	}
 	projectRoot := filepath.Join(baseDir, "demo")
 	if _, statErr := os.Stat(projectRoot); !os.IsNotExist(statErr) {
 		t.Fatalf("expected %s not to exist after dry-run, got err=%v", projectRoot, statErr)

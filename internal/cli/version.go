@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const baseVersion = "1.3.1"
+const baseVersion = "1.3.2"
 const devSuffix = "dev"
 
 var releaseVersion string
