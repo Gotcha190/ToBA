@@ -11,20 +11,21 @@ import (
 // Returns:
 // - the shell script executed on the SSH host
 func remotePreparationScript(remoteWordPressRoot string, remoteDatabase string, remotePlugins string, remoteUploads string, remoteSourceURL string, includeUploads bool) string {
+	cleanupFiles := shellQuote(pathBase(remoteDatabase)) + " " + shellQuote(pathBase(remotePlugins)) + " " + shellQuote(pathBase(remoteUploads)) + " " + shellQuote(pathBase(remoteSourceURL))
 	commands := []string{
 		"set -eu",
 		"if [ ! -d " + shellQuote(remoteWordPressRoot) + " ]; then printf '%s\\n' " + shellQuote("__TOBA_REMOTE_ROOT_MISSING__") + "; exit 42; fi",
-		"cleanup_on_error() { status=$?; if [ \"$status\" -ne 0 ]; then rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + " " + shellQuote(remoteSourceURL) + "; fi; exit \"$status\"; }",
-		"cleanup_on_signal() { rm -f " + shellQuote(remoteDatabase) + " " + shellQuote(remotePlugins) + " " + shellQuote(remoteUploads) + " " + shellQuote(remoteSourceURL) + "; exit 130; }",
-		"trap cleanup_on_error EXIT",
-		"trap cleanup_on_signal HUP INT TERM",
 		"cd " + shellQuote(remoteWordPressRoot),
-		"wp84 option get home > " + shellQuote(pathBase(remoteSourceURL)) + " & pid_source=$!",
-		"wp84 db export " + shellQuote(pathBase(remoteDatabase)) + " >/dev/null & pid_db=$!",
-		"(cd wp-content && zip -r -q ../" + shellQuote(pathBase(remotePlugins)) + " plugins) & pid_plugins=$!",
+		"pids=''",
+		"cleanup_on_error() { status=$?; trap - EXIT HUP INT TERM; if [ \"$status\" -ne 0 ]; then for pid in $pids; do kill \"$pid\" 2>/dev/null || :; done; for pid in $pids; do wait \"$pid\" 2>/dev/null || :; done; rm -f " + cleanupFiles + "; fi; exit \"$status\"; }",
+		"trap cleanup_on_error EXIT",
+		"trap 'exit 130' HUP INT TERM",
+		"wp84 option get home > " + shellQuote(pathBase(remoteSourceURL)) + " & pid_source=$!; pids=\"$pids $pid_source\"",
+		"wp84 db export " + shellQuote(pathBase(remoteDatabase)) + " >/dev/null & pid_db=$!; pids=\"$pids $pid_db\"",
+		"(cd wp-content && exec zip -r -q ../" + shellQuote(pathBase(remotePlugins)) + " plugins) & pid_plugins=$!; pids=\"$pids $pid_plugins\"",
 	}
 	if includeUploads {
-		commands = append(commands, "(cd wp-content && zip -r -q -0 ../"+shellQuote(pathBase(remoteUploads))+" . -i "+shellQuote("uploads/*")+") & pid_uploads=$!")
+		commands = append(commands, "(cd wp-content && exec zip -r -q -0 ../"+shellQuote(pathBase(remoteUploads))+" . -i "+shellQuote("uploads/*")+") & pid_uploads=$!; pids=\"$pids $pid_uploads\"")
 	}
 	commands = append(commands,
 		"wait \"$pid_source\"",

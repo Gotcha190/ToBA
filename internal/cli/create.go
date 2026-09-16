@@ -117,7 +117,7 @@ func runCreateWithIO(opts CreateOptions, runner create.CommandRunner, input io.R
 
 	ctx := create.NewContext(cwd, config, logger, runner)
 	defer func() {
-		if ctx.StarterData.TempDir == "" {
+		if ctx.DryRun || ctx.StarterData.TempDir == "" {
 			return
 		}
 		if err := os.RemoveAll(ctx.StarterData.TempDir); err != nil {

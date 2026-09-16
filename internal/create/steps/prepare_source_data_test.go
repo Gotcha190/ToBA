@@ -206,7 +206,7 @@ func TestPrepareStarterDataNoUploadsSkipsRemoteUploads(t *testing.T) {
 	}
 	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 option get home >")
 	assertStarterCommandContains(t, runner.commands, "ssh", "wp84 db export")
-	assertStarterCommandContains(t, runner.commands, "ssh", "(cd wp-content && zip -r -q ../")
+	assertStarterCommandContains(t, runner.commands, "ssh", "(cd wp-content && exec zip -r -q ../")
 	assertStarterCommandNotContains(t, runner.commands, "ssh", "pid_uploads")
 	assertStarterCommandNotContains(t, runner.commands, "ssh", "-i 'uploads/*'")
 	if target := findStarterLocalTarget(runner.commands, "-uploads.zip"); target != "" {

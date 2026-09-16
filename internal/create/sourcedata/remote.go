@@ -33,13 +33,12 @@ func prepareRemote(ctx *create.Context) error {
 
 	if ctx.DryRun {
 		tempDir := filepath.Join(os.TempDir(), "toba-starter-dry-run")
-		ctx.StarterData = create.StarterData{
-			Mode:         ModeRemote,
-			TempDir:      tempDir,
-			DatabasePath: filepath.Join(tempDir, "remote", "starter.sql"),
-			PluginsPaths: []string{filepath.Join(tempDir, "plugins", "starter-plugins.zip")},
-			SourceURL:    "https://remote.example.test",
-		}
+		// ThemePaths belongs to local preparation and may be read by the
+		// concurrent theme steps. Remote preparation must not overwrite it.
+		ctx.StarterData.Mode = ModeRemote
+		ctx.StarterData.DatabasePath = filepath.Join(tempDir, "remote", "starter.sql")
+		ctx.StarterData.PluginsPaths = []string{filepath.Join(tempDir, "plugins", "starter-plugins.zip")}
+		ctx.StarterData.SourceURL = "https://remote.example.test"
 		if !ctx.Config.NoUploads {
 			ctx.StarterData.UploadsPaths = []string{filepath.Join(tempDir, "uploads", "starter-uploads.zip")}
 		}
@@ -105,13 +104,11 @@ func prepareRemote(ctx *create.Context) error {
 		return err
 	}
 
-	ctx.StarterData = create.StarterData{
-		Mode:         ModeRemote,
-		TempDir:      tempDir,
-		DatabasePath: artifacts.localDatabase,
-		PluginsPaths: []string{artifacts.localPlugins},
-		SourceURL:    sourceURL,
-	}
+	// Preserve ThemePaths: theme cloning and git setup can still be running.
+	ctx.StarterData.Mode = ModeRemote
+	ctx.StarterData.DatabasePath = artifacts.localDatabase
+	ctx.StarterData.PluginsPaths = []string{artifacts.localPlugins}
+	ctx.StarterData.SourceURL = sourceURL
 	if !ctx.Config.NoUploads {
 		ctx.StarterData.UploadsPaths = []string{artifacts.localUploads}
 	}
